@@ -1,0 +1,226 @@
+default-resources:
+  slurm_account: "jkebsch1"
+  slurm_partition: "parallel"
+  nodes: 1
+  #ntasks_per_node: 1
+  #cpus_per_task: 6
+  # mem_mb: 30000  # Increase to 2 GB or more if needed
+  mem_mb: 120000
+  disk_mb: 120000
+  time: 30:00
+  slurm_time: 30:00
+
+set-resources:
+  minmax1:
+    slurm_time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    mem_mb: 5000
+    disk_mb: 5000
+    #ntasks_per_node: 1
+    # mem_mb: 120000
+    # disk_mb: 120000
+
+  generate_dapi_files:
+    slurm_account: "jkebsch1"
+    slurm_partition: "shared"
+    nodes: 1
+    #ntasks_per_node: 1
+    #cpus_per_task: 6
+    # mem_mb: 30000  # Increase to 2 GB or more if needed
+    mem_mb: 100000
+    disk_mb: 100000
+    time: 30:00
+    slurm_time: 30:00
+
+  generate_gtca_files:
+    slurm_account: "jkebsch1"
+    slurm_partition: "shared"
+    nodes: 1
+    #ntasks_per_node: 1
+    #cpus_per_task: 6
+    # mem_mb: 30000  # Increase to 2 GB or more if needed
+    mem_mb: 100000
+    disk_mb: 100000
+    time: 30:00
+    slurm_time: 30:00
+
+        
+  get_minmax2:
+    slurm_time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    mem_mb: 100000
+    disk_mb: 100000
+    #ntasks_per_node: 1
+    # mem_mb: 120000
+    # disk_mb: 120000
+
+  apply_minmax2:
+    slurm_time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    mem_mb: 100000
+    disk_mb: 100000
+    #ntasks_per_node: 1
+    # mem_mb: 120000
+    # disk_mb: 120000
+
+  channel_alignment_get_transforms_opencv_sm:
+    slurm_time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    # gpu: 1
+    # #ntasks_per_node: 1
+    mem_mb: 100000
+    disk_mb: 100000
+
+  apply_alignment:
+    slurm_time: 2:00:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    # gpu: 1
+    # #ntasks_per_node: 1
+    mem_mb: 160000
+    disk_mb: 160000
+
+  normalization:
+    time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    #gpu: 1
+    nodes: 1
+    #cpus_per_task: 4
+    #ntasks-per-node: 1
+    #nodes: 2
+    ##ntasks_per_node: 16
+    # mem_mb: 3000
+    #disk_mb: 120000
+    mem_mb: 100000
+    disk_mb: 100000
+    slurm_time: 30:00
+
+  find_initial_thresh:
+    time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "shared"
+    nodes: 1
+    mem_mb: 90000
+    disk_mb: 90000
+    ##ntasks_per_node: 16 
+    #cpus_per_task: 4
+    #tasks-per-node: 48
+    #nodes: 2
+    #ntasks_per_node: 1
+    # mem_mb: 160000
+    #disk_mb: 120000
+    slurm_time: 30:00
+
+  find_initial_thresh_median:        
+    time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "shared"
+    nodes: 1
+    mem_mb: 5000
+    disk_mb: 5000
+    #ntasks_per_node: 1
+    #cpus_per_task: 4
+    #tasks-per-node: 48
+    #nodes: 2
+    ##ntasks_per_node: 16
+    # mem_mb: 3000
+    #disk_mb: 120000
+    slurm_time: 30:00
+
+  find_thresh_find_no_final:         
+    time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    mem_mb: 20000
+    disk_mb: 20000
+    #ntasks_per_node: 1
+    #cpus_per_task: 4
+    #tasks-per-node: 48
+    #nodes: 2
+    ##ntasks_per_node: 16
+    # mem_mb: 160000
+    #disk_mb: 120000
+    slurm_time: 30:00
+
+  find_thresh_find_no_genes: 
+    time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "shared"
+    nodes: 1
+    mem_mb: 100000
+    disk_mb: 100000
+    #ntasks_per_node: 1
+    #cpus_per_task: 4
+    #tasks-per-node: 48
+    #nodes: 2
+    ##ntasks_per_node: 16
+    # mem_mb: 160000
+    #disk_mb: 120000
+    slurm_time: 30:00
+
+  bardensr_reg:
+    time: 1:30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    mem_mb: 160000
+    disk_mb: 160000
+    #gpu: 1
+    #ntasks_per_node: 1
+    #cpus_per_task: 4
+    #tasks-per-node: 48
+    #nodes: 2
+    ##ntasks_per_node: 16
+    # mem_mb: 160000
+    #disk_mb: 120000
+    slurm_time: 1:30:00
+
+  call_genes:
+    time: 3:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    # slurm_extra: '--gres gpu:1'
+    # gpu: 1
+    mem_mb: 160000
+    disk_mb: 160000
+    slurm_time: 30:00
+  
+  find_thresh:
+    time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "parallel"
+    nodes: 1
+    # cpus_per_task: 1
+    #gpu: 1
+    # tasks-per-node: 1
+    mem_mb: 160000
+    disk_mb: 160000
+    #nodes: 2
+    ##ntasks_per_node: 16
+    # mem_mb: 160000
+    #disk_mb: 120000
+    slurm_time: 30:00
+
+
+  cell_segmentation:
+    time: 30:00
+    slurm_account: 'jkebsch1'
+    slurm_partition: "shared"
+    nodes: 1
+    #gpu: 1
+    # #ntasks_per_node: 4
+    mem_mb: 10000  
+    disk_mb: 10000    #disk_mb: 120000
+    slurm_time: 30:00 

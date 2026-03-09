@@ -1,0 +1,1740 @@
+import h5py
+import cv2
+import bardensr.plotting
+import tensorflow as tf
+import datetime
+import scipy
+import scipy.signal
+import numpy as np
+import pandas as pd
+import anndata as ad
+from cellpose import denoise
+from cellpose import models
+from skimage.segmentation import expand_labels
+import skimage as sk
+import csv
+import codecs
+import os
+from datetime import datetime
+import SimpleITK as sitk
+import bardensr  # Ensure bardensr is installed and importable
+from skimage.feature import blob_log
+
+#### CHANGE THESE PARAMETERS ####
+
+path = config['path'] #"/home/cworkma5/scratch4-jkebsch1/chriyounglc24_aged_lc05/out_LC24B2S4/" #(Snakefile path)
+gtca_path = path + config['gtca_path'] #path + "STARmap_output/image_origin.hdf5" #image_origin.hdf5
+dapi_path = path + config['dapi_path'] #path + "STARmap_loadImg/dapi_all_z.npy" # dapi_all_z.npy
+nissl_path = path + config['nissl_path']
+codebook_path = config['codebook_path'] #path + "../codebook.csv"
+positions_path = path + config['positions_path']#path + "STARmap_loadImg/position_org.csv"
+mask_expand_dist = config['mask_expand_dist']
+SKIP_FOVS = config['skip_fovs']
+cellpose_model = config['cellpose_model']
+expand_mask = config['expand_mask']
+cell_segmentation_method = config["cell_segmentation_method"]
+cellpose_diameter = 8/0.16
+
+
+def get_FOVs(gtca_path):
+    with h5py.File(gtca_path, 'r') as f:
+        # e.g. measure dataset length
+        return len(f["list"])
+
+
+# FOVs = range(get_FOVs(gtca_path))  # e.g. range(35)
+FOVs = [f for f in range(get_FOVs(gtca_path)) if f not in SKIP_FOVS]
+
+
+# Constants
+FOV_minmax = np.array(config['FOV_minmax']) 
+fov_align = config['fov_align']
+precision = config['precision']
+radius = config['radius']
+max_wiggle = config['max_wiggle']
+niter = config['niter']
+round_num =  config['round_num']
+thresh_refined = config['thresh_refined']
+noisefloor = config['noisefloor']
+len_wid = config['len_wid']
+base_code = config['base_code']
+fdr_thresh = config['fdr_thresh']
+positions_glob = positions_path
+nogene_keyword = config['nogene_keyword']
+find_threshold = config['find_threshold']
+use_dapi_nissl_max = config['use_dapi_nissl_max']
+use_cv2_blob_detector = config['use_cv2_blob_detector']
+mask_expand_dist = config['mask_expand_dist']
+CHANNEL_DEMONS = True
+ESTIMATE_DENSITY_ITERATIONS = config['evidence_tensor_iterations']
+
+#### CHANGE THESE PARAMETERS ####
+
+
+def blob_keypoints(im):
+    blobs = blob_log(
+        im,
+        # min_sigma=3,  # Minimum size of blobs
+        max_sigma=10,  # Maximum size of blobs
+        # num_sigma=10,  # Number of intermediate sizes
+        threshold=0.05  # Lower th
+    )
+    keypoints = []
+    for blob in blobs:
+        y, x, sigma = blob
+        keypoints.append(cv2.KeyPoint(float(x), float(y), float(2 * sigma)))
+    print('keypoints', len(keypoints))
+    return keypoints #np.float32([kp.pt for kp in keypoints])
+
+
+def channel_alignment_get_transforms_opencv_sm(images):  # assumes structure is round x channel x X x Y
+    transforms = []
+    images = np.stack(images, axis=0)  # Ensure this is a NumPy array with the right shape
+    print("Shape of images after stacking:", images.shape)
+    for i in range(len(images)):
+        # if i not in SKIP_FOVS:
+        print("Finding channel alignment for round " + str(i))
+        print(images.shape)
+        # Use correct indexing
+        c2 = images[i][2]  # Assuming this is the intended channel
+        c2 = np.expand_dims(np.stack([c2, c2, c2, c2], axis=0), axis=1)
+        print(c2.shape)
+        # c2 = bardensr.preprocessing.background_subtraction((c2 / np.max(c2)).astype('float'), [0, 50, 50])
+        c2 = bardensr.preprocessing.background_subtraction((c2 / np.max(c2)).astype('float'), [0, 5, 5])
+        c2 = np.sum(c2[:,0], axis=0)
+        c2 = np.clip(c2, 0, np.percentile(c2.ravel(), 99.5))
+        # c2 = np.clip(c2, 0, np.percentile(c2.ravel(), 95))
+        # c2 = (255 - (c2 / np.max(c2)) * 255).astype('uint8')
+        c2 = ((c2 / np.max(c2)) * 255).astype('uint8')
+        c3 = images[i, 3]  # Correct indexing
+        c3 = np.expand_dims(np.stack([c3, c3, c3, c3], axis=0), axis=1)
+        #print(c3.shape)
+        # c3 = bardensr.preprocessing.background_subtraction((c3 / np.max(c3)).astype('float'), [0, 50, 50])
+        c3 = bardensr.preprocessing.background_subtraction((c3 / np.max(c3)).astype('float'), [0, 5, 5])
+
+        c3 = np.sum(c3[:,0], axis=0)
+        c3 = np.clip(c3, 0, np.percentile(c3.ravel(), 99.5))
+        # c3 = np.clip(c2, 0, np.percentile(c2.ravel(), 95))
+        # c3 = (255 - (c3 / np.max(c3)) * 255).astype('uint8')
+        c3 = ((c3 / np.max(c3)) * 255).astype('uint8')
+        # Detect keypoints and compute descriptors
+        if use_cv2_blob_detector:
+            params = cv2.SimpleBlobDetector_Params()
+            params.blobColor = 0  # lighter blobs
+            params.minThreshold = 5
+            params.maxThreshold = 250
+            params.filterByArea = True
+            params.maxArea = 1000
+            params.filterByCircularity = True
+            params.minCircularity = 0.5
+            params.filterByInertia = True
+            params.minInertiaRatio = 0.01
+            detector = cv2.SimpleBlobDetector_create(params)
+            # Detect blobs
+            keypoints1 = detector.detect(c3)
+            keypoints2 = detector.detect(c2)
+            # Convert keypoints to numpy arrays of points
+            pts1 = np.float32([kp.pt for kp in keypoints1])
+            pts2 = np.float32([kp.pt for kp in keypoints2])
+        else:
+            keypoints1 = blob_keypoints(c3)
+            keypoints2 = blob_keypoints(c2)
+            pts1 = np.float32([kp.pt for kp in keypoints1])
+            pts2 = np.float32([kp.pt for kp in keypoints2])
+        # Create BFMatcher object
+        bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+        
+        # Print number of keypoints
+        print('pts1', len(pts1))
+        print('pts2', len(pts2))
+
+        sift = cv2.SIFT_create()
+        keypoints1, descriptors1 = sift.compute(c3, keypoints1)
+        keypoints2, descriptors2 = sift.compute(c2, keypoints2)
+        
+        # Match descriptors
+    #     matches = bf.match(pts1, pts2)
+        matches = bf.match(descriptors1, descriptors2)
+
+        matches = sorted(matches, key=lambda x: x.distance)
+        print(len(matches))
+        num_good_matches = int(len(matches) * 0.9)
+        matches = matches[:num_good_matches]
+
+
+        # Extract matched keypoints and filter by spatial distance
+        src_pts_all = np.float32([keypoints1[m.queryIdx].pt for m in matches])
+        dst_pts_all = np.float32([keypoints2[m.trainIdx].pt for m in matches])
+        distances = np.linalg.norm(src_pts_all - dst_pts_all, axis=1)
+        filtered_indices = np.where(distances < 10)[0]
+        src_pts = src_pts_all[filtered_indices].reshape(-1, 1, 2)
+        dst_pts = dst_pts_all[filtered_indices].reshape(-1, 1, 2)
+        print('filtered', len(src_pts))
+
+
+        # Find homography
+        H, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 1.0)#5.0)
+        transforms.append(H)
+        # else:
+        #     transforms.append(None)
+    # Save outside of the loop to avoid overwriting
+    save_hdf5(transforms, path + "output/transforms.hdf5")
+
+
+
+
+def save_hdf5(matrix, file_path): #assumes this is a list of np arrays
+    f = h5py.File(file_path,'w')
+    grp = f.create_group('list')
+    for i,arr in enumerate(matrix):
+        grp.create_dataset(str(i), data=arr)
+    f.close()
+    return None
+
+
+
+
+def open_hdf5(file_path): #assumes this is a list of np arrays
+    var_name= []
+    f = h5py.File(file_path)
+    print(f)
+    data = f['list']
+    for i in range(len(data)):
+        var_name.append(data[str(i)][:])
+    f.close()
+    print(len(var_name))
+    print(len(var_name[0]))
+    return var_name
+
+
+
+
+def alignment_opencv_colorbleed_corr_crop_sm(images, transforms, fov_sample, colormixing_matrix=np.array([
+    [1,.15,0,0],  
+    [0.5,1,0,0],
+    [0,0,1,0.5],
+    [0,0,0.2,1]]).T
+):
+
+    
+    
+
+    for k in range(len(transforms)):
+            print(images[k][1].shape)
+            images[k][1] = cv2.warpPerspective((images[k][1]).astype(np.float32), transforms[k], (2304, 2304))
+            images[k][3] = cv2.warpPerspective(images[k][3].astype(np.float32), transforms[k], (2304, 2304))
+    transforms = []
+    r1 = np.expand_dims(images[0],axis = 1)
+    # r1 = bardensr.preprocessing.background_subtraction((r1/np.max(r1)).astype('float'),[0,30,30])
+    r1 = bardensr.preprocessing.background_subtraction((r1/np.max(r1)).astype('float'),[0,5,5])
+
+    r1 = np.sum(r1[:,0], axis = 0)
+    r1 = np.clip(r1, 0, np.percentile(r1.ravel(), 99))
+    # r1 = (255-(r1/np.max(r1))*255).astype('uint8')
+    r1 = ((r1/np.max(r1))*255).astype('uint8')
+    r11 = r1 #[400:1700, 400:1700]
+    blobs2 = blob_log(r11, max_sigma=10, threshold=0.1)
+    keypts2 = np.array([[b[1], b[0]] for b in blobs2], dtype=np.float32)
+    keypts2_pt = [cv2.KeyPoint(x=pt[0], y=pt[1], size=10) for pt in keypts2]
+    
+    temp = []
+    for j in range(len(images)):
+            print("round alignment for round "+str(j)+" and round "+ str(j))
+            rn = np.expand_dims(images[j],axis = 1)
+            # rn = bardensr.preprocessing.background_subtraction((rn/np.max(rn)).astype('float'),[0,30,30])
+            rn = bardensr.preprocessing.background_subtraction((rn/np.max(rn)).astype('float'),[0,5,5])
+
+            rn = np.sum(rn[:,0], axis = 0)
+            print(rn.shape)
+            rn = np.clip(rn, 0, np.percentile(rn.ravel(), 99))
+            # rn = (255-(rn/np.max(rn))*255).astype('uint8')
+            rn = ((rn/np.max(rn))*255).astype('uint8')
+
+            rn1 = rn #[400:1700, 400:1700]
+            # Detect blobs
+            # Blob detection
+            blobs1 = blob_log(rn1, max_sigma=10, threshold=0.1)
+            
+            # Extract keypoints' coordinates
+            keypts1 = np.array([[b[1], b[0]] for b in blobs1], dtype=np.float32)
+            
+            sift = cv2.SIFT_create()
+            keypts1_pt = [cv2.KeyPoint(x=pt[0], y=pt[1], size=10) for pt in keypts1]
+            
+            keypoints1, descriptors1 = sift.compute(rn, keypts1_pt)
+            keypoints2, descriptors2 = sift.compute(r1, keypts2_pt)
+
+
+            bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+            # Match descriptors
+            matches = bf.match(descriptors1, descriptors2)
+            matches = sorted(matches, key=lambda x: x.distance)
+            print(len(matches))
+            num_good_matches = int(len(matches) * 0.8)
+            matches = matches[:num_good_matches]
+            print('Number of matches between round 0 and ' + str(j)+": "+ str(len(matches)))
+            src_pts1 = np.float32([keypoints1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+            dst_pts1 = np.float32([keypoints2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+
+            # #print(des1,des2)
+            # # FLANN parameters
+            # FLANN_INDEX_KDTREE = 1
+            # index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+            # search_params = dict(checks=50) # or pass empty dictionary
+            # flann = cv2.FlannBasedMatcher(index_params,search_params)
+            # matches = flann.knnMatch(descriptors1,descriptors2,k=2)
+            # # Need to draw only good matches, so create a mask
+            # #matchesMask = [[0,0] for i in range(len(matches))]
+            # # ratio test as per Lowe's paper
+            # good = []
+            # for p,(m,n) in enumerate(matches):
+            #     if m.distance < 0.7*n.distance:
+            #         good.append(m)
+            # # Sort matches by score
+            # #matches = sorted(matches, key=lambda x: x.distance)
+            # print('Number of matches between round 0 and ' + str(j)+": "+ str(len(good)))
+            # #img3 = cv2.drawMatches(r11,kp1,rn1,kp2,good[:5],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+            # #plt.imshow(img3),plt.show()
+            # # Extract matched keypoints
+            # src_pts1 = np.float32([keypoints1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+            # dst_pts1 = np.float32([keypoints2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+            # Find homography
+            H, _ = cv2.estimateAffinePartial2D(src_pts1, dst_pts1,method=cv2.RANSAC, ransacReprojThreshold=1.0)
+            H = np.asarray(H, dtype=np.float32)
+            print(H)
+            #temp[j] = H
+            images[ j][0] = cv2.warpAffine(images[ j][ 0], H, (images[ j][ 0].shape[1], images[ j][ 0].shape[0]))
+            images[ j][ 1] = cv2.warpAffine(images[ j][ 1], H, (images[ j][ 1].shape[1], images[ j][ 1].shape[0]))
+            images[ j][ 2] = cv2.warpAffine(images[ j][ 2], H, (images[ j][ 2].shape[1], images[ j][ 2].shape[0]))
+            images[ j][ 3] = cv2.warpAffine(images[ j][ 3], H, (images[ j][ 3].shape[1], images[ j][ 3].shape[0]))  
+    fix=np.linalg.inv(colormixing_matrix)
+    for i in range(len(images)):
+        print("Round: "+str(i))
+        images[i] = np.clip(np.einsum('cxy,cd->dxy',images[i],fix),0,None)
+    print("crop images and find mask")
+    #crop image
+    data_align_crop = []
+    masks = []
+    # Find the maximum border size among all images
+    images = np.stack(images, axis=0)
+    images_crop,mask = get_border_size(images, 2304, 2304)
+    save_hdf5(images_crop, path + "output/fov"+str(fov_sample)+"_align_corr.hdf5")
+    save_hdf5(mask, path + "output/fov"+str(fov_sample)+"_mask.hdf5")
+
+
+
+
+def get_border_size(image, x_dim, y_dim):
+    data_temp = image.reshape(image.shape[0]*image.shape[1], x_dim, y_dim)
+    mask = np.ones([x_dim, y_dim])
+
+    for i in range(len(data_temp)):
+        mask = mask*data_temp[i] != 0
+
+    nonzero_coords = np.argwhere(mask != 0)
+    top, left = nonzero_coords.min(axis=0)
+    bottom, right = nonzero_coords.max(axis=0)
+
+    cropped_image = data_temp[:,top+20:bottom-20, left+20:right-20].astype(np.float64)
+    mask_fov = np.zeros([x_dim, y_dim])
+    mask_fov[top+20:bottom-20, left+20:right-20] = 1 # clip 20 pixels on each side to account for rotation
+    data_temp = cropped_image.reshape(image.shape[0],image.shape[1],cropped_image.shape[1],cropped_image.shape[2])
+    return data_temp, mask_fov
+
+
+
+
+def min_max(images):
+    min_value = np.percentile(images, precision, axis=(1,2), keepdims=True) # np.percentile(rounds_cb[j], axis=(1, 2),keepdims=True)
+    max_value = np.percentile(images, 100-precision, axis=(1,2), keepdims=True) # tf.reduce_max(rounds_cb[j], axis=(1, 2),keepdims=True)
+    return min_value, max_value
+
+
+
+
+def apply_mask_to_images(image_array, mask):
+    mask = np.stack(mask, axis = 0)
+    mask_width, mask_height = mask.shape
+    x_index, y_index = np.where(mask == 1)
+    x_st, x_ed, y_st, y_ed = min(x_index), max(x_index), min(y_index), max(y_index)
+    result_array = np.zeros((image_array.shape[0], image_array.shape[1], mask_width, mask_height), dtype=image_array.dtype)
+
+    for i in range(image_array.shape[0]):
+        for j in range(image_array.shape[1]):
+            x_core, y_core = image_array[i, j].shape[0], image_array[i, j].shape[1]
+            #if (x_ed-x_st+1) != x_core or (y_ed-y_st+1) != y_core:
+            #print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+"masks not fit!")
+            resized_image = np.zeros((mask_width, mask_height), dtype=image_array.dtype)
+            resized_image[x_st:x_ed+1, y_st:y_ed+1] = image_array[i, j]
+            result_array[i, j] = resized_image
+    return result_array
+
+
+
+
+def round_normalization_sm(rounds, median_min, median_max, fov_sample): # minmax-rb-n2v(*option)-minmax
+    R = rounds.shape[0]
+    C = rounds.shape[1]
+    # step 1. min-max normalization
+    #print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+"step 1. min-max normalization")
+    rounds = (rounds - median_min) / median_max
+    rounds = np.clip(rounds,0,1)
+    # step 2. background subtraction
+    #print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+"step 2. background subtraction")
+    with tf.device('/device:GPU:0'):
+        print(rounds.shape)
+        rounds = np.expand_dims(rounds, axis = 1)
+        rounds = bardensr.preprocessing.background_subtraction(rounds.astype(np.float32), [0,radius,radius])
+    save_hdf5(rounds, path + "output/fov"+str(fov_sample)+"_norm.hdf5")   
+
+
+
+
+def find_position(original_image, larger_image, search_radius=10):
+    # Calculate search area limits
+    start_x = max(original_image.shape[1] // 2 - search_radius, 0)
+    end_x = min(larger_image.shape[1] - original_image.shape[1] // 2 + search_radius, larger_image.shape[1])
+    start_y = max(original_image.shape[0] // 2 - search_radius, 0)
+    end_y = min(larger_image.shape[0] - original_image.shape[0] // 2 + search_radius, larger_image.shape[0])
+    # Extract the search area from the larger image
+    search_area = larger_image[start_y:end_y, start_x:end_x]
+    # Calculate cross-correlation between original image and search area
+    correlation = scipy.signal.correlate2d(search_area, original_image, mode='same', boundary='fill', fillvalue=0)
+    # Find the index of the maximum correlation value
+    idx = np.unravel_index(np.argmax(correlation), correlation.shape)
+    # Calculate the start and end positions of the original image within the larger image
+    start_x = start_x + idx[1] - original_image.shape[1] // 2
+    end_x = start_x + original_image.shape[1]
+    start_y = start_y + idx[0] - original_image.shape[0] // 2
+    end_y = start_y + original_image.shape[0]
+    return start_x, end_x, start_y, end_y
+
+
+def register_stack_with_demons(
+    imagestack,
+    reference_index=0,
+    niter=150,
+    smoothing_sigma=2.0,
+):
+    """
+    Demon registration on full-resolution images (no downsampling)
+    """
+    R, C, H, W = imagestack.shape
+    images_sum = np.sum(imagestack, axis=1)
+
+    # Prepare fixed SITK image
+    fixed_np = images_sum[reference_index]
+    fixed = to_sitk_image(fixed_np)
+    transforms = [None]*R
+    aligned_stack = np.zeros_like(imagestack)
+
+    # Reference frame identity
+    aligned_stack[reference_index] = imagestack[reference_index]
+    identity_tf = sitk.Transform(2, sitk.sitkIdentity)
+    transforms[reference_index] = identity_tf
+
+    for i in range(R):
+
+        # if CHANNEL_DEMONS:
+        #     fixed_ch = to_sitk_image(imagestack[i, 2])
+        #     moving_ch = to_sitk_image(imagestack[i, 3])
+        #     # Initialize and run Demons registration
+        #     demons = sitk.DemonsRegistrationFilter()
+        #     demons.SetNumberOfIterations(niter)
+        #     demons.SetStandardDeviations(smoothing_sigma)
+        #     displacement_field = demons.Execute(fixed_ch, moving_ch)
+        #     displacement_field = sitk.DisplacementFieldTransform(displacement_field)
+
+        #     res = sitk.Resample(
+        #         moving_ch, fixed_ch, displacement_field,
+        #         sitk.sitkLinear, 0.0, moving_ch.GetPixelID()
+        #     )
+        #     imagestack[i, 3] = sitk.GetArrayFromImage(res)
+
+        #     moving_ch = to_sitk_image(imagestack[i, 1])
+        #     res = sitk.Resample(
+        #         moving_ch, fixed_ch, displacement_field,
+        #         sitk.sitkLinear, 0.0, moving_ch.GetPixelID()
+        #     )
+        #     imagestack[i, 1] = sitk.GetArrayFromImage(res)
+        #     images_sum[i] = np.sum(imagestack[i], axis=0)
+
+
+        if i == reference_index:
+            continue
+        print(f"Processing frame {i}")
+        moving_np = images_sum[i]
+        moving = to_sitk_image(moving_np)
+
+        # Initialize and run Demons registration
+        demons = sitk.DemonsRegistrationFilter()
+        demons.SetNumberOfIterations(niter)
+        demons.SetStandardDeviations(smoothing_sigma)
+
+        displacement_field = demons.Execute(fixed, moving)
+        print(f"RMS Change: {demons.GetRMSChange():.6f} after {demons.GetElapsedIterations()} iterations")
+
+        # Convert to displacement field transform
+        displacement_field = sitk.DisplacementFieldTransform(displacement_field)
+        transforms[i] = displacement_field
+
+        # Resample all channels
+        for ch in range(C):
+            mov_ch = to_sitk_image(imagestack[i,ch])
+            res = sitk.Resample(
+                mov_ch, fixed, displacement_field,
+                sitk.sitkLinear, 0.0, mov_ch.GetPixelID()
+            )
+            aligned_stack[i,ch] = from_sitk_image(res)
+    return transforms, aligned_stack
+
+
+def register_fovs_sm(images, codeflat, fov_sample, max_wiggle = max_wiggle, niter = niter):
+    # Perform registration on the patch (e.g., using BardenSR)
+    # This is a placeholder function, replace it with your actual registration code
+   # print(images.shape)
+   # Xnorm = images.reshape(images.shape[0]*images.shape[1], 1, images.shape[2], images.shape[3])
+    #with tf.device('/device:GPU:0'):
+    #print(Xnorm.shape)
+    #print('start patch reg...')
+    #corrections = bardensr.registration.find_translations_using_model(Xnorm, codeflat, maximum_wiggle = max_wiggle, use_tqdm_notebook=False, niter=niter)
+    #flat, newt = bardensr.registration.apply_translations(Xnorm, corrections.corrections,mode='full')
+    #print('fin patch reg...')
+    #flat = flat[:,:, :images.shape[2], :images.shape[3]]
+    #print(flat.shape)
+    #reflat = flat.reshape(images.shape[0],images.shape[1], images.shape[2], images.shape[3])
+    
+    # Assume imagestack is defined, e.g.:
+# imagestack = np.random.rand(10, 256, 256)  # 10 random 2D images of size 256x256
+
+# Use the function to get transforms and aligned images
+    transforms, aligned_stack = register_stack_with_bspline_downsample(
+        images,
+        reference_index=0,
+        spline_grid=(16,16),        # coarser grid
+        niter=80,                  # fewer iterations
+        learning_rate=0.01,        # lower learning rate
+        max_disp=5,               # restrict displacement further
+        downsample_size=(1000, 1000))
+
+    save_hdf5(aligned_stack, path+"output/fov"+str(fov_sample)+"_reg.hdf5")
+
+def register_fovs_bardensr_demons(images, mask, codeflat, fov_sample, max_wiggle = max_wiggle, niter = niter):
+    # Bardensr Registration
+    # Xnorm = images.reshape(images.shape[0]*images.shape[1], 1, images.shape[2], images.shape[3])
+    # corrections = bardensr.registration.find_translations_using_model(Xnorm, codeflat, maximum_wiggle = max_wiggle, use_tqdm_notebook=False, niter=niter)
+    # flat, newt = bardensr.registration.apply_translations(Xnorm, corrections.corrections,mode='full')
+    # flat = flat[:,:, :images.shape[2], :images.shape[3]]
+    # print(flat.shape)
+    # reflat = flat.reshape(images.shape[0],images.shape[1], images.shape[2], images.shape[3])
+    reflat = images
+    # Demons Registration
+    transforms, aligned_stack = register_stack_with_demons(reflat)
+    aligned_stack = apply_mask_to_images(aligned_stack, mask)
+    save_hdf5(aligned_stack, path+"output/fov"+str(fov_sample)+"_reg.hdf5")
+
+
+
+
+def to_sitk_image(arr):
+    if arr.ndim == 2:
+        return sitk.GetImageFromArray(arr)
+    elif arr.ndim == 3:
+        return sitk.GetImageFromArray(arr, isVector=False)
+    else:
+        raise ValueError("Only 2D or 3D arrays are supported.")
+
+def from_sitk_image(img):
+    return sitk.GetArrayFromImage(img)
+
+def downsample_image(image, target_size):
+    original_size = np.array(image.GetSize(), dtype=float)
+    original_spacing = np.array(image.GetSpacing())
+    new_size = np.array(target_size, dtype=int)
+    new_spacing = (original_size * original_spacing) / new_size
+
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetSize([int(sz) for sz in new_size])
+    resampler.SetOutputSpacing(new_spacing.tolist())
+    resampler.SetOutputOrigin(image.GetOrigin())
+    resampler.SetOutputDirection(image.GetDirection())
+    resampler.SetInterpolator(sitk.sitkLinear)
+
+    return resampler.Execute(image)
+
+def restrict_control_point_displacement(transform, max_disp=10):
+    """
+    Restrict the displacement of control points in a BSplineTransform 
+    to a maximum value.
+    """
+    coeff_images = list(transform.GetCoefficientImages())
+    restricted_images = []
+    for cp_img in coeff_images:
+        arr = sitk.GetArrayFromImage(cp_img)
+        arr = np.clip(arr, -max_disp, max_disp)
+        restricted_img = sitk.GetImageFromArray(arr)
+        restricted_img.CopyInformation(cp_img)
+        restricted_images.append(restricted_img)
+    transform.SetCoefficientImages(tuple(restricted_images))
+    return transform
+
+
+def register_stack_with_bspline_downsample(
+    imagestack,
+    reference_index=0,
+    spline_grid=(8, 8),
+    niter=10,
+    learning_rate=0.5,
+    max_disp=10,
+    downsample_size=(1000, 1000)
+):
+    R = imagestack.shape[0]  # Number of frames in the stack
+
+    # Summing across channels for single-channel registration
+    images_sum = np.sum(imagestack, axis=1)
+    fixed_np = images_sum[reference_index]
+    fixed_sitk = to_sitk_image(fixed_np)
+
+    transforms = [None] * R
+    aligned_stack = np.zeros_like(imagestack)
+
+    aligned_stack[reference_index] = imagestack[reference_index]
+    # Use identity transform as BSpline for reference
+    identity_bspline = sitk.BSplineTransformInitializer(
+        fixed_sitk, transformDomainMeshSize=spline_grid, order=3
+    )
+    transforms[reference_index] = identity_bspline
+
+    for i in range(R):
+        print("Processing frame", i)
+        if i == reference_index:
+            continue
+
+        moving_np = images_sum[i]
+        moving_sitk = to_sitk_image(moving_np)
+
+        # Initialize a B-spline transform for this registration
+        initial_transform = sitk.BSplineTransformInitializer(
+            fixed_sitk,
+            transformDomainMeshSize=spline_grid,
+            order=3,
+        )
+
+        registration_method = sitk.ImageRegistrationMethod()
+        registration_method.SetMetricAsCorrelation()
+        registration_method.SetOptimizerAsGradientDescent(
+            learningRate=learning_rate,
+            numberOfIterations=niter,
+        )
+        registration_method.SetInterpolator(sitk.sitkLinear)
+        registration_method.SetInitialTransform(initial_transform, inPlace=False)
+        final_transform = registration_method.Execute(fixed_sitk, moving_sitk)
+
+        # Ensure final_transform is a BSplineTransform
+        if isinstance(final_transform, sitk.BSplineTransform):
+            final_transform = restrict_control_point_displacement(final_transform, max_disp=max_disp)
+        else:
+            print(f"Warning: Transform for frame {i} is not a pure BSplineTransform.")
+            # Skip displacement restriction for non-BSplineTransform
+
+        transforms[i] = final_transform
+
+        # Resample each channel of the moving frame and stack them in the original order
+        resampled_channels = []
+        for ch in range(imagestack.shape[1]):  # Loop over channels
+            moving_channel_sitk = to_sitk_image(imagestack[i, ch])
+            resampled_channel = sitk.Resample(
+                moving_channel_sitk,
+                fixed_sitk,  # Reference frame for alignment
+                final_transform,
+                sitk.sitkLinear,
+                0.0,
+                moving_channel_sitk.GetPixelID()
+            )
+            resampled_channels.append(from_sitk_image(resampled_channel))
+
+        # Stack resampled channels along the channel axis (preserve order)
+        aligned_stack[i] = np.stack(resampled_channels, axis=0)
+
+    return transforms, aligned_stack
+
+# Assume imagestack is defined, e.g.:
+# imagestack = np.random.rand(10, 256, 256)  # 10 random 2D images of size 256x256
+
+# Use the function to get transforms and aligned images
+
+from bardensr.spot_calling import blackberry
+
+def estimate_density_iterative_fp32(imagestack, codebook, l1_penalty=0, psf_radius=(0,0,0),
+                    iterations=100, estimate_codebook_gain=True,
+                    rounds=None,
+                    estimate_colormixing=False, estimate_phasing=False,
+                    use_tqdm_notebook=False):
+    """
+    Float32-safe version of bardensr's estimate_density_iterative.
+    """
+
+    imagestack = imagestack.astype(np.float32)
+    codebook = codebook.astype(np.float32)
+
+    F = imagestack.shape[0]
+    J = codebook.shape[-1]
+    niter = iterations
+
+    if rounds is None:
+        rounds = 1
+    else:
+        assert F % rounds == 0
+
+    imagestack_rc = imagestack.reshape((rounds, F // rounds) + imagestack.shape[1:])
+    codebook = codebook.reshape((rounds, F // rounds, codebook.shape[-1]))
+
+    imagestack_rct = tf.convert_to_tensor(
+        np.transpose(imagestack_rc, [2, 3, 4, 0, 1]),
+        dtype=tf.float32
+    )
+
+    M0, M1, M2 = imagestack_rct.shape[:3]
+
+    m = blackberry.denselearner.Model(codebook, (M0, M1, M2),
+                                      lam=l1_penalty,
+                                      blur_level=psf_radius)
+
+    if use_tqdm_notebook:
+        import tqdm.notebook
+        t = tqdm.notebook.trange(niter)
+    else:
+        t = range(niter)
+
+    for i in t:
+        m.update_F(imagestack_rct)
+        if estimate_codebook_gain:
+            m.update_alpha(imagestack_rct)
+        if estimate_colormixing:
+            m.update_varphi(imagestack_rct)
+        if estimate_phasing:
+            m.update_rho(imagestack_rct)
+        m.update_a(imagestack_rct)
+        m.update_b(imagestack_rct)
+
+    return m.F_scaled(), dict(frame_gains=m.alpha.numpy().ravel())
+
+def call_genes_tiled(
+    Xflat, codeflat, tile_size=1024, iterations=10, **kwargs
+):
+    F, _, H, W = Xflat.shape
+    assert _ == 1
+
+    J = codeflat.shape[-1]
+    result_full = np.zeros((H, W, J), dtype=np.float32)
+
+    for i in range(0, H, tile_size):
+        for j in range(0, W, tile_size):
+            i_end = min(i + tile_size, H)
+            j_end = min(j + tile_size, W)
+
+            # Extract spatial tile from all frames
+            Xtile = Xflat[:, :, i:i_end, j:j_end]
+
+            try:
+                et_tile, _ = bardensr.spot_calling.estimate_density_iterative(
+                    Xtile, codeflat, iterations=iterations, **kwargs
+                )
+            except Exception as e:
+                print(f"Tile ({i}:{i_end}, {j}:{j_end}) failed: {e}")
+                continue
+
+            # Insert result into final output
+            result_full[i:i_end, j:j_end, :] = et_tile[:i_end - i, :j_end - j, :]
+
+    return result_full
+
+def call_genes_tiled_with_overlap(
+    Xflat, codeflat, tile_size=1024, overlap=64, iterations=10, **kwargs
+):
+    """
+    Run estimate_density_iterative_fp32 in spatial tiles with optional overlap padding.
+    Returns a full (H, W, J) tensor.
+    """
+
+    
+
+
+    F, _, H, W = Xflat.shape
+    J = codeflat.shape[-1]
+
+    result_full = np.zeros((H, W, J), dtype=np.float32)
+
+    for i in range(0, H, tile_size):
+        for j in range(0, W, tile_size):
+            # Compute padded tile bounds
+            i_start = max(i - overlap, 0)
+            i_end   = min(i + tile_size + overlap, H)
+            j_start = max(j - overlap, 0)
+            j_end   = min(j + tile_size + overlap, W)
+
+            # Extract padded tile from all frames
+            Xtile = Xflat[:, :, i_start:i_end, j_start:j_end]
+
+            try:
+                et_tile, _ = bardensr.spot_calling.estimate_density_iterative(
+                    Xtile, codeflat, iterations=iterations, **kwargs
+                )
+                et_tile = et_tile.squeeze(axis=0)  # Remove batch dimension
+            except Exception as e:
+                print(f"Tile ({i}:{i_end}, {j}:{j_end}) failed: {e}")
+                continue
+
+            # Determine where to crop the tile output
+            crop_top    = i - i_start
+            crop_bottom = crop_top + min(tile_size, H - i)
+            crop_left   = j - j_start
+            crop_right  = crop_left + min(tile_size, W - j)
+
+            et_cropped = et_tile[crop_top:crop_bottom, crop_left:crop_right, :]
+
+            result_full[i:i+et_cropped.shape[0], j:j+et_cropped.shape[1], :] = et_cropped
+
+    # return np.squeeze(result_full, axis=0) if result_full.shape[0] == 1 else result_full
+    return result_full[np.newaxis, ...]# if result_full.shape[0] == 1 else result_full
+
+
+
+def call_genes_large_data(image, codeflat, codebook, genenames,thresh_refined, noisefloor, len_wid, round_num, fov_sample, find_thresh = False):
+
+    os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
+    #image = image[round_num]
+    image = np.stack(image, axis = 0)
+    # image = image.astype(np.float32, copy=False) 
+    print(len(image))
+    print(image[0].shape)
+    Xflat = image.reshape(image.shape[0]*image.shape[1],1,image.shape[2], image.shape[3])
+    print(Xflat.shape)
+    # Xflat = image.reshape(image.shape[0]*image.shape[1],1,image.shape[2], image.shape[3]).astype(np.float32)
+    # Xflat = Xflat.astype(np.float32)
+    # codeflat = codeflat.astype(np.float32)
+
+    print("Image dtype:", image.dtype)
+    print("codeflat dtype:", codeflat.dtype)
+    print("thresh_refined dtype:", np.asarray(thresh_refined).dtype)
+
+
+    #  et=bardensr.spot_calling.estimate_density_singleshot(Xflat,codeflat,0.05)
+    # et,extra_learned_params=\
+    # bardensr.spot_calling.estimate_density_iterative(Xflat,codeflat,use_tqdm_notebook=False,iterations=10)
+    # et,extra_learned_params=estimate_density_iterative_fp32(Xflat,codeflat,use_tqdm_notebook=False,iterations=10)
+    if ESTIMATE_DENSITY_ITERATIONS > 0:
+        et = call_genes_tiled_with_overlap(Xflat, codeflat, tile_size=512, iterations=ESTIMATE_DENSITY_ITERATIONS)
+    else:
+        et = bardensr.spot_calling.estimate_density_singleshot(Xflat,codeflat,0.05)
+    import pickle
+    with open(path+ "et_"+fov_sample +".hdf5", 'wb') as file:
+    #    pickle.dump(et,path+ "et_"+fov_sample +".hdf5")
+    #print("et shape:", et.shape)
+    with tf.device('/CPU:0'):
+    	spots=bardensr.spot_calling.find_peaks(et,thresh_refined,poolsize=(1,1,1), use_tqdm_notebook=False)
+
+
+    et_squeezed = et.squeeze(0)  
+    # Extract the pixel intensity for each row in the DataFrame
+    #pixel_values = spots.apply(lambda row: et_squeezed[int(row['m2']), int(row['m1']), int(row['j'])], axis=1)    
+    #print(pixel_values)
+    # Add the pixel value as a new column
+    #spots['pixel_val'] = pixel_values
+    # spots['pixel_val'] = pd.Series(pixel_values.values, index=spots.index)
+    
+    # Compute the j index with the maximum value at each (m1, m2)
+    #max_j_array = np.argmax(et_squeezed, axis=2)  # shape: (2304, 2304)
+
+    # Add a column to DataFrame indicating if that row is the max j at that (m1, m2)
+    #spots['is_max_j'] = spots.apply(
+    #    lambda row: row['j'] == max_j_array[int(row['m1']), int(row['m2'])],
+    #    axis=1
+    #)
+
+    # Keep only those rows
+    #spots = spots[spots['is_max_j']].drop(columns='is_max_j')
+
+    print(spots)
+    spots['FOV'] = [fov_sample]*len(spots['m2'])
+    spots.drop_duplicates()
+    print('Creating gene genenames column...')
+    genenames = np.array(genenames)
+    spots['Names'] = genenames[spots['j']]
+    if find_thresh == False:
+        spots.to_csv(path + "output/fov"+str(fov_sample)+"_genes.csv")
+    if find_thresh == True:
+        return spots
+
+def find_initial_thresh(image, fov_sample, codeflat, codebook, genenames,thresh_refined, noisefloor, len_wid, round_num, nogene_keyword = nogene_keyword):
+     image = image[round_num]
+     image = np.stack(image, axis = 0)
+     print(len(image))
+     print(image[0].shape)
+     ercc_names = [s for s in genenames if nogene_keyword in s]
+     ercc_codes = np.where(np.in1d(genenames, ercc_names))[0]
+     print("False Detection Rate: "+str(fdr_thresh))
+     print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+'initialize thresh level for optimization')
+     ##\thresh = 0.7
+     #ercc_maxes = [] # but computing et isn't actually much slower than loading it from disk... :)`
+     Xflat = image.reshape(image.shape[0]*image.shape[1],1,image.shape[2], image.shape[3])
+     et=bardensr.spot_calling.estimate_density_singleshot(Xflat,codeflat,0.05)
+     ercc_max = et[:,:,:,ercc_codes].max(axis=(0,1,2))
+     with open(path+"output/initial_thresh"+str(fov_sample)+".txt", 'w') as file:
+        file.write(f"{ercc_max}\n")
+
+#def find_thresh(image, codeflat, codebook, genenames,thresh_refined, noisefloor, len_wid, round_num, fov_sample):
+def find_params_gradient(rounds_all, codeflat, genenames, nogene_keyword=nogene_keyword, round_num=round_num, fdr_thresh=fdr_thresh):
+    # rounds_all = image_preped
+    # This is the max values of all unused barcodes in all fovs. 
+    thresh = np.median(np.median(ercc_maxes, axis=1)) # median across fovs of the median across no genes # this is the initial thresh level for optimization
+    if np.isnan(thresh):
+        thresh = 0.7
+    print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+'    initial thresh from calculation: '+str(thresh))
+
+    print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+'refine threshold by gradient convergence')
+    diff = 1.0
+    stepsize = 0.1
+    thresh_list, fdr_list =[], []
+    while abs(diff) > 0.1: # diff = 5% - threshold
+        nogenes_num, genes_num = [], []
+        nogenes_calls, genes_calls = [], []
+        for i in range(len(rounds_all)):
+            Xflat = rounds_all[i].reshape((R*C,)+rounds_all[i].shape[-2:])
+            Xflat = np.expand_dims(Xflat, axis=1)
+            # print('before')
+            no_genes_called = len(np.unique(spots.iloc[np.where(np.isin(spots['j'],ercc_codes))]['j'])) + 0.01
+            nogenes_num.append(no_genes_called)
+            genes_called = len(np.unique(spots['j'])) - no_genes_called + 0.01
+            genes_num.append(genes_called)
+            ercc_c = len(spots.iloc[np.where(np.isin(spots['j'],ercc_codes))]['j'])
+            nogenes_calls.append(ercc_c)
+            genes_calls.append(len(spots)-ercc_c)
+        # divide by all gene num
+        nogene_avg = np.mean(nogenes_calls)/len(ercc_names)
+        trgene_avg = np.mean(genes_calls)/(len(genenames)-len(ercc_names))
+        fdrmean = nogene_avg / (trgene_avg + 0.001)
+        # # divide by unique gene num
+        # fdrmean = (np.mean(nogenes_calls)/np.mean(nogenes_num))*(np.mean(genes_num)/np.mean(genes_calls))
+        thresh_list.append(thresh)
+        fdr_list.append(fdrmean)
+        diff = fdr_thresh - fdrmean
+        print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+'    thresh: '+str(thresh)+'; fdrmean: '+str(fdrmean)+'; diff:'+str(diff))
+        thresh -= stepsize * diff / abs(diff)
+        stepsize /= 2
+    thresh_refined = thresh_list[-1]
+    print ("thresh_refined: "+str(thresh_refined))
+    with open(path+"output/thresh_refined.txt", 'w') as file:
+        file.write(f"{thresh_refined}\n")
+
+def dapi_partialz_seg(dapi_all_z_images, fov_sample, expand_dist, diameter=6/0.16, channels=[0,0], model_type="cyto3", restore_type="upsample_cyto3", nframes=1, int_thresh = 0.85, flow_threshold=20, radius =100): #0-255 intensity values
+    dapi_all_z = dapi_all_z_images
+
+    dapi_merged = []
+    intensity = []
+    for j in range(len(dapi_all_z)):
+        intensity.append(np.mean(dapi_all_z[j].ravel()))
+    intensity = intensity - np.min(intensity)
+    z_pos = []
+    for k in range(len(intensity)):
+        if intensity[k]>int_thresh*np.max(intensity):
+            if len(z_pos) <nframes:
+                z_pos.append(k)
+        #dapi_merged.append(np.sum(dapi_all_z[i][z_pos], axis = 0))
+    temp = np.sum(dapi_all_z[z_pos], axis = 0)
+    print(1)
+    temp = (temp/np.max(temp)).astype(float)
+    #temp=tf.clip_by_value(temp,0,temp.dtype.max)
+    dapi_merged=np.array(temp)
+    print("Denoise and segment...")
+    model = denoise.CellposeDenoiseModel(gpu=True, model_type=model_type, restore_type=restore_type)
+    masks, flows, styles, upsampled_img = model.eval(dapi_merged, diameter=diameter, channels=channels, flow_threshold=flow_threshold)
+    expanded = expand_labels(masks, expand_dist)
+    save_hdf5(expanded, path + "output/fov"+str(fov_sample)+"_dapi_mask_exp.hdf5")
+
+def segment_maxproj_images(dapi_images, nissl_images, fov_sample, expand_dist, cellpose_model= cellpose_model, model_type="cyto3", restore_type="upsample_cyto3", cellpose_channel=[0,0], cellpose_diameter=6/0.16):
+        # prep images
+        if (dapi_images is not None) and (nissl_images is not None):
+                #     merged_images.append(np.stack([np.zeros(dapi_images[i].shape), nissl_images[i]/np.max(nissl_images[i]), dapi_images[i]/np.max(dapi_images[i])], axis =2))
+                merged_images = np.stack([np.zeros(dapi_images.shape), nissl_images/np.max(nissl_images), dapi_images/np.max(dapi_images)], axis =2)
+        elif (dapi_images is not None) and (nissl_images is None):
+                merged_images = dapi_images
+        elif (dapi_images is None) and (nissl_images is not None):
+                merged_images = nissl_images
+        model = denoise.CellposeDenoiseModel(gpu=False, model_type=model_type, restore_type=restore_type)
+        masks, flows, styles, diams = model.eval(merged_images, diameter=cellpose_diameter, channels=cellpose_channel)
+
+        # all_masks.append(masks)
+        masks = expand_labels(masks, expand_dist)
+        # return all_masks
+        save_hdf5(masks, path + "output/fov"+str(fov_sample)+"_dapi_mask_exp.hdf5")
+
+def denoise_segment_images(dapi_all_z, fov_sample, expand_dist, diameter=6/0.16, channels=[0,0], model_type="cyto3", restore_type="deblur_cyto3", nframes=1, int_thresh = 0.9999): #0-255 intensity values
+    intensity = []
+    for j in range(len(dapi_all_z)):
+        intensity.append(np.mean(dapi_all_z[j].ravel()))
+    intensity = intensity - np.min(intensity)
+    z_pos = []
+    for k in range(len(intensity)):
+        if intensity[k]>int_thresh*np.max(intensity):
+            if len(z_pos) <nframes:
+                z_pos.append(k)
+    dapi_all_z = np.stack(dapi_all_z, axis = 0)
+    dapi_merged = np.sum(dapi_all_z[z_pos], axis = 0)
+    print("Denoising images and segmenting cells...")
+    print(dapi_merged.shape)
+
+    model = denoise.CellposeDenoiseModel(gpu=False, model_type=model_type, restore_type=restore_type)
+    print("model created")
+    masks, flows, styles, dapi_merged_dn = model.eval(dapi_merged, diameter=diameter, channels=channels)
+    expanded = expand_labels(masks, expand_dist)
+    save_hdf5(expanded, path + "output/fov"+str(fov_sample)+"_dapi_mask_exp.hdf5")   
+
+
+
+
+
+def map_gene2cell(genes_result_fov, mask, FOV, position_reg, dim, xdim, ydim):
+    #genes_result_global['FOV'] = genes_result_global['FOV'].astype(int)
+    #genes_result_cell = []
+
+    # Label connected components in the mask image outside the loop
+    labeled_mask = sk.measure.label(mask)
+
+    #print("Mapping FOV " + str(FOV))
+    cells = np.unique(mask)
+    #genes_result_fov = genes_result_global[genes_result_global['FOV'] == FOV]
+    genes_result_fov["cell_ID"] = mask[list(genes_result_fov['m1']), list(genes_result_fov['m2'])]
+    genes_result_fov = genes_result_fov[genes_result_fov["cell_ID"] != 0]
+    # Get properties of labeled regions for the current FOV
+    props = sk.measure.regionprops(labeled_mask)
+    centroids = np.array([prop.centroid for prop in props])
+    
+    # Assign center coordinates to genes_result_fov using cell numbers
+    cell_num = genes_result_fov['cell_ID'].values - 1
+    x_centers = np.array(centroids[cell_num.astype(int), 0])
+    y_centers = np.array(centroids[cell_num.astype(int), 1])
+    
+    genes_result_fov["cell_center_X"] = x_centers
+    genes_result_fov["cell_center_Y"] = y_centers
+    genes_result_fov["cell_center_globX"] = x_centers + position_reg['X'][FOV] - 2304/2
+    genes_result_fov["cell_center_globY"] = y_centers - position_reg['Y'][FOV] + np.max(position_reg['Y'])
+    
+    genes_result_fov['cell_number'] = genes_result_fov['cell_ID'].astype(str) + '_' + genes_result_fov['FOV'].astype(str)
+    genes_result_fov['cell_globID'] = genes_result_fov.groupby(['FOV', 'cell_ID']).ngroup()
+    genes_result_fov.to_csv(path + "output/fov"+str(FOV)+"_genemapped.csv")
+
+
+
+def convert_to_annData(gene_mat_df):
+    # Handle missing values by filling them with zeros
+    gene_mat_df.fillna(0, inplace=True)
+
+    # Group by 'cell_globID' and 'Names' and count occurrences
+    gem = gene_mat_df.groupby(['cell_number', 'Names']).size().unstack(fill_value=0)
+    print
+    # Compute mean coordinates for each cell ID
+    coordinates = gene_mat_df.groupby('cell_number')[['globX', 'globY']].mean()
+    print(len(coordinates))
+    # Reset index to ensure unique ascending numeric IDs
+    coordinates.reset_index(inplace=True)
+
+    # Create AnnData object
+    adata = ad.AnnData(gem)
+    adata.var['genes'] = gem.columns.tolist()  # Assigning actual gene names as 'genes'
+    adata.obs['cell_number'] = gem.index.tolist()  # Using 'cell_globID' as cell_number
+
+    coord = np.array([[coordinates['globX'][i], coordinates['globY'][i]] for i in range(len(coordinates['globX']))] )
+    print(coord)
+    adata.obsm['spatial'] = coord
+    return adata
+
+
+
+
+def create_codebook(filepath_codebook, round_num, base_code): # working with round index
+    genenames, gene_codes = [], []
+    with open(filepath_codebook, newline='') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            check_head = set(row[1])
+            available = set('ATGC')
+            if check_head.issubset(available):
+                if row[0].__contains__(codecs.BOM_UTF8.decode(f.encoding)):
+                # A Byte Order Mark is present
+                    genenames.append(row[0].strip(codecs.BOM_UTF8.decode(f.encoding)))
+                else:
+                    genenames.append(row[0])
+                barcode = np.array([*row[1]])
+                # print(barcode)
+                barcode_subset = barcode[round_num]
+                # print(barcode_subset)
+                gene_codes.append(barcode_subset)
+    print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+    codebook = np.full((len(round_num), 4, len(gene_codes)), False)
+    for tagNum, tag in enumerate(gene_codes):
+        for roundNum, letter in enumerate(tag):
+            if letter == base_code[0]: 
+                codebook[roundNum, 0, tagNum] = True
+            if letter == base_code[1]: 
+                codebook[roundNum, 1, tagNum] = True
+            if letter == base_code[2]: 
+                codebook[roundNum, 2, tagNum] = True
+            if letter == base_code[3]: 
+                codebook[roundNum, 3, tagNum] = True
+    codeflat = codebook.reshape((codebook.shape[0]*codebook.shape[1],-1)) # R,C,J=codebook.shape
+    return codebook, genenames, codeflat
+
+# Codebook creation
+codebook, genenames, codeflat = create_codebook(codebook_path, round_num, base_code)
+ercc_names = [s for s in genenames if nogene_keyword in s]
+ercc_codes = np.where(np.in1d(genenames, ercc_names))[0]
+
+
+
+rule csv2adata:
+    input:
+        gene_mat_df = path + "output/genes_all_fovs.csv"
+    output:
+        path+"output/adata.h5ad"
+    run:
+        #positions_glob = pd.read_csv(input.positions_global
+        gene_df = pd.read_csv(input.gene_mat_df) 
+        adata = convert_to_annData(gene_df)
+        adata.write_h5ad(path+"output/adata.h5ad")
+
+#rule gene2cell:#
+#    input:
+#       mask_images = [path + "output/fov{FOV}_dapi_mask_exp.hdf5"],
+#        gene_called = [path+"output/fov{FOV}_genes.csv"]
+#    params:
+#       positions_glob = positions_glob
+#    output:
+#        temp([path+"output/fov{FOV}_genemapped.csv"])
+#    run:
+#        positions_glob = pd.read_csv(params.positions_glob)
+#       gene_called_all_fovs = pd.read_csv(input.gene_called)
+#        for mask_path in input.mask_images:  # Loop through all FOV input files
+#            mask = open_hdf5(mask_path)
+#            mask = np.stack(mask, axis = 0)
+#            genes = pd.read_csv(input.gene_called)
+#            fov_sample = int(mask_path.split('fov')[-1].split('.')[0].split('_')[0])
+#            map_gene2cell(genes, mask, fov_sample, positions_glob, 2304, 2304, 2304)
+
+
+
+rule gene2cell:
+    input:
+        mask_images = [path + "output/fov{FOV}_dapi_mask_exp.hdf5"],
+        gene_called = [path+"output/fov{FOV}_genes.csv"]
+    params:
+        positions_glob = positions_glob
+    output:
+        [path+"output/fov{FOV}_genemapped.csv"]
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        positions_df = pd.read_csv(params.positions_glob)  # Read positions
+        for mask_path, gene_file, output_file in zip(input.mask_images, input.gene_called, output):
+            mask = open_hdf5(mask_path)
+            mask = np.stack(mask, axis=0)
+            genes = pd.read_csv(gene_file)
+            fov_sample = int(mask_path.split('fov')[-1].split('.')[0].split('_')[0])
+            # Map genes to cells
+            map_gene2cell(genes, mask, fov_sample, positions_df, 2304, 2304, 2304)
+            # Save the result
+            #mapped_data.to_csv(output_file, index=False)
+
+
+rule find_initial_thresh:
+    input:
+        images = [path + "output/fov{FOV}_reg.hdf5"]
+    params:
+        find_threshold = find_threshold
+    output:
+        [path+"output/initial_thresh{FOV}.txt"]
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        if find_threshold == True: 
+            for image in input.images:
+                image_ = open_hdf5(image)
+                image_ = np.stack(image_, axis=0)
+                fov_sample = int(image.split('fov')[-1].split('.')[0].split('_')[0])
+                print(f"Processing FOV: {fov_sample}") 
+                find_initial_thresh(image_, fov_sample, codeflat, codebook, genenames,thresh_refined, noisefloor, len_wid, round_num, nogene_keyword = nogene_keyword)
+            #fov_sample = int(mask_path.split('fov')[-1].split('.')[0].split('_')[0])
+            # Map genes to cells
+            #map_gene2cell(genes, mask, fov_sample, positions_df, 2304, 2304, 2304)
+            # Save the result
+            #mapped_data.to_csv(output_file, index=False)
+        else:
+             for image in input.images:
+                image_ = open_hdf5(image)
+                image_ = np.stack(image_, axis=0)
+                fov_sample = int(image.split('fov')[-1].split('.')[0].split('_')[0])
+             with open(path+"output/initial_thresh"+str(fov_sample)+".txt", 'w') as file:
+                 file.write(f"{thresh_refined}\n")
+             with open(path+"output/thresh_refined.txt", 'w') as file:
+                 file.write(f"{thresh_refined}\n")
+
+
+
+rule find_initial_thresh_median:
+    input:
+        initial_thresh = expand([path + "output/initial_thresh{FOV}.txt"], FOV = FOVs)
+    output:
+        [path+"output/initial_threshold.txt"]
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        if find_threshold == True:
+            ercc_maxes = []
+            for init in input.initial_thresh:
+                with open(init, 'r') as file:
+                    raw_value = file.read().strip()
+    		    thresh_calc = np.fromstring(raw_value.strip('[]'), sep=' ')
+            # Parse tuple-like string and extract the float
+                ercc_maxes.append(thresh_calc)
+            ercc_maxes = np.array(ercc_maxes) # This is the max values of all unused barcodes in all fovs. 
+            initial_threshold = np.median(np.median(ercc_maxes, axis=1))
+            with open(path+"output/initial_threshold.txt", 'w') as file:
+                 file.write(f"{initial_threshold}\n")
+        else:
+            with open(path+"output/initial_threshold.txt", 'w') as file:
+                 file.write(f"{thresh_refined}\n")
+
+
+rule cell_segmentation:
+    input:
+        # We define a dynamic function that returns the union of any required files.
+        # E.g. if cell_segmentation_method = "dapi", we return only dapi files;
+        # if it's "maxdapienissl", we return both sets, etc.
+        lambda wc: (
+            # Start with an empty list:
+            []
+            # If the method uses DAPI, include dapi files
+            + ([path + f"output/fov{wc.FOV}_dapi.hdf5"]
+               if cell_segmentation_method in ["dapi", "dapi_partialz", "maxdapi+nissl"]
+               else [])
+            # If the method uses NISSL, include nissl files
+            + ([path + f"output/fov{wc.FOV}_nissl.hdf5"]
+               if cell_segmentation_method in ["nissl", "maxdapi+nissl"]
+               else [])
+        )
+    params:
+        expand_dist      = expand_mask,
+        positions_glob   = positions_glob
+    output:
+        # For output, you might want just one type of file in all cases,
+        # e.g. "fov{FOV}_dapi_mask_exp.hdf5". But if “nissl” is truly different,
+        # you may want "fov{FOV}_nissl_mask_exp.hdf5" in that case.
+        # This example always creates dapi_mask_exp names for each FOV,
+        # but you can do something more sophisticated if you like:
+        temp(path + "output/fov{FOV}_dapi_mask_exp.hdf5")
+    wildcard_constraints:
+        FOV = r"\d+"
+    run:
+        import pandas as pd
+        positions_glob_df = pd.read_csv(params.positions_glob)
+        # If we are in “dapi_partialz” or “dapi” or “maxdapi+nissl,”
+        # we’ll find those dapi files in input. If we’re in “nissl” or
+        # “maxdapi+nissl,” we can open them by doing the "replace(...)" trick.
+
+        if cell_segmentation_method == "dapi_partialz":
+            # We only have DAPI files in input
+            for dapi_file in sorted(input):
+                if "dapi.hdf5" not in dapi_file:
+                    continue
+                dapi_image = open_hdf5(dapi_file)
+                dapi_image = np.stack(dapi_image, axis=0)
+                fov_sample = int(dapi_file.split("fov")[-1].split("_")[0])
+                dapi_partialz_seg(
+                    dapi_image, fov_sample, params.expand_dist )
+
+        elif cell_segmentation_method == "maxdapi+nissl":
+            # We have both dapi and nissl in input
+            # so we can pair them up by name or just find DAPI
+            # and call .replace(...) to get the matching NISSL
+            dapi_files = [f for f in input if "dapi.hdf5" in f]
+            for dapi_file in sorted(dapi_files):
+                nissl_file = dapi_file.replace("dapi", "nissl")
+                dapi_image  = np.stack(open_hdf5(dapi_file),  axis=0)
+                nissl_image = np.stack(open_hdf5(nissl_file), axis=0)
+                fov_sample  = int(dapi_file.split("fov")[-1].split("_")[0])
+                segment_maxproj_images(
+                    dapi_image, nissl_image, fov_sample, params.expand_dist,
+                    cellpose_model=cellpose_model, cellpose_channel=[2,3],
+                    cellpose_diameter=cellpose_diameter
+                )
+
+        elif cell_segmentation_method == "dapi":
+            # Only dapi in input
+            dapi_files = [f for f in input if "dapi.hdf5" in f]
+            for dapi_file in sorted(dapi_files):
+                dapi_image = np.stack(open_hdf5(dapi_file), axis=0)
+                fov_sample = int(dapi_file.split("fov")[-1].split("_")[0])
+                segment_maxproj_images(
+                    dapi_image, None, fov_sample, params.expand_dist,
+                    cellpose_model=cellpose_model, cellpose_channel=[0,0]
+                )
+
+        elif cell_segmentation_method == "nissl":
+            # Only nissl in input
+            nissl_files = [f for f in input if "nissl.hdf5" in f]
+            for nissl_file in sorted(nissl_files):
+                nissl_image = np.stack(open_hdf5(nissl_file), axis=0)
+                fov_sample  = int(nissl_file.split("fov")[-1].split("_")[0])
+                segment_maxproj_images(
+                    None, nissl_image, fov_sample, params.expand_dist,
+                    cellpose_model=cellpose_model, cellpose_channel=[2,3],
+                    cellpose_diameter=cellpose_diameter
+                )
+
+
+rule stitch_fovs_genes:
+    input:
+        fov_files = expand(path + "output/fov{FOV}_genemapped.csv", FOV=FOVs)
+    params:
+        positions_glob = positions_glob
+    output:
+        path + "output/genes_all_fovs.csv"
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        import pandas as pd
+        import numpy as np
+        
+        # Read positions data
+        positions_glob = pd.read_csv(params.positions_glob)
+        print(positions_glob)
+        
+        gene_called_all_fovs = pd.DataFrame()
+        
+        # Process each FOV file
+        for fov_file in input.fov_files:
+            gene_called_sample = pd.read_csv(fov_file)
+            
+            # Extract FOV sample ID from the file path
+            fov_sample = int(fov_file.split('fov')[-1].split('.')[0].split('_')[0])
+            print(f"Processing FOV: {fov_sample}")
+            
+            # Calculate global coordinates
+            gene_called_sample['globX'] = (
+                gene_called_sample['m2'] + np.max(positions_glob['X']) -  positions_glob.loc[fov_sample, 'X'] - 2304 / 2).astype(int)
+            
+            gene_called_sample['globY'] = (
+                np.max(positions_glob['Y']) - positions_glob.loc[fov_sample, 'Y'] + gene_called_sample['m1']).astype(int)
+            
+            # Concatenate results
+            gene_called_all_fovs = pd.concat([gene_called_all_fovs, gene_called_sample], ignore_index=True)
+        
+        # Remove duplicates and save to output
+        gene_called_all_fovs.drop_duplicates(inplace=True)
+        gene_called_all_fovs.to_csv(path + "output/genes_all_fovs.csv", index=False)
+
+
+
+
+rule call_genes:
+    input:
+        fov_files = [path+"output/fov{FOV}_reg.hdf5"],
+        thresh_path = path+"output/thresh_refined.txt" 
+    params:
+        codeflat = codeflat,
+        codebook = codebook,
+        genenames = genenames,
+        #thresh_refined = thresh_refined,
+        noisefloor = noisefloor,
+        len_wid = len_wid,
+        round_num = round_num
+    output:
+        temp([path+"output/fov{FOV}_genes.csv"])
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values  
+    run:
+        with open(input.thresh_path, 'r') as file:
+            raw_value = file.read().strip()
+            # Parse tuple-like string and extract the float
+            thresh_calc = float(raw_value.strip("()").split(",")[0])
+        for fov_file in input.fov_files:  # Loop through all FOV input files
+            images = open_hdf5(fov_file)  # Load the input file
+            images = np.stack(images)     
+            fov_sample = int(fov_file.split('fov')[-1].split('_')[0])
+            print(fov_file.split('fov')[-1].split('_'))
+            print("fov_sample: "+str(fov_sample))
+            call_genes_large_data(images, params.codeflat, params.codebook, params.genenames,thresh_calc, params.noisefloor, params.len_wid, params.round_num, fov_sample)
+
+
+rule find_thresh_find_no_genes:
+    input:
+        fov_files = [path+"output/fov{FOV}_reg.hdf5"],
+        initial_thresh = path+"output/initial_threshold.txt"
+    params:
+        codeflat = codeflat,
+        codebook = codebook,
+        genenames = genenames,
+        thresh_refined = thresh_refined,
+        noisefloor = noisefloor,
+        len_wid = len_wid,
+        round_num = round_num,
+        find_threshold = find_threshold,
+        fdr_thresh = fdr_thresh
+    output:
+        genes_calls=[path+"output/genes_calls{FOV}.txt"],
+        nogenes_calls=[path+"output/nogenes_calls{FOV}.txt"]
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        if find_threshold == True:
+             with open(input.initial_thresh, 'r') as f:
+                 initial_thresh = float(f.read().strip())
+             for fov_file in input.fov_files:  # Loop through all FOV input files
+                 image = open_hdf5(fov_file)
+                 fov_sample = int(fov_file.split('fov')[-1].split('_')[0])
+                 nogenes_calls = []
+                 genes_calls = []
+                 for thresh in [initial_thresh + ((i / 50)-0.05) for i in range(5)]: 
+                     print(f"Processing FOV: {fov_sample}, Threshold: {thresh}")
+                     spots = call_genes_large_data(image, codeflat, codebook, genenames,thresh, noisefloor, len_wid, round_num, fov_sample, find_thresh = True)
+                     no_genes_called = len(np.unique(spots.iloc[np.where(np.isin(spots['j'],ercc_codes))]['j'])) + 0.01
+                     genes_called = len(np.unique(spots['j'])) - no_genes_called + 0.01
+                     ercc_c = len(spots.iloc[np.where(np.isin(spots['j'],ercc_codes))]['j'])
+                     nogenes_calls.append(ercc_c)
+                     genes_calls.append(len(spots)-ercc_c)
+                 with open(path+"output/nogenes_calls"+str(fov_sample)+".txt", 'w') as f:
+                     f.write(f"{nogenes_calls}\n")
+                 with open(path+"output/genes_calls"+str(fov_sample)+".txt", 'w') as f:
+                     f.write(f"{genes_calls}\n")
+        else:
+            for fov_file in input.fov_files:  # Loop through all FOV input files
+                 image = open_hdf5(fov_file)
+                 fov_sample = int(fov_file.split('fov')[-1].split('_')[0])
+                 with open(path+"output/nogenes_calls"+str(fov_sample)+".txt", 'w') as f:
+                     f.write(f"{thresh_refined}\n")
+                 with open(path+"output/genes_calls"+str(fov_sample)+".txt", 'w') as f:
+                     f.write(f"{thresh_refined}\n")
+
+rule find_thresh_find_no_final:
+    input:
+        nogenes_calls = expand([path+"output/nogenes_calls{FOV}.txt"], FOV = FOVs),
+        genes_calls = expand([path+"output/genes_calls{FOV}.txt"], FOV = FOVs),
+        thresh_path = path+"output/initial_threshold.txt"
+    params:
+        codeflat = codeflat,
+        codebook = codebook,
+        genenames = genenames,
+        thresh_refined = thresh_refined,
+        noisefloor = noisefloor,
+        len_wid = len_wid,
+        round_num = round_num,
+        find_threshold = find_threshold,
+        fdr_thresh = fdr_thresh
+    output:
+        path+"output/thresh_refined.txt"
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        if find_threshold == True:
+         with open(input.thresh_path, 'r') as file:
+            init_thresh = float(file.read().strip())
+         nogenes_call_all, genes_call_all = [], []
+         for nfile, gfile in zip(input.nogenes_calls, input.genes_calls):
+             with open(nfile, 'r') as f:
+                 raw_value = f.read().strip()
+                 ng = list(np.fromstring(raw_value.strip('[]'), sep=', '))
+                 print(ng)
+                 nogenes_call_all.append(ng)
+             with open(gfile, 'r') as f:
+                 raw_value = f.read().strip()
+                 g = list(np.fromstring(raw_value.strip('[]'), sep=', '))
+                 print(g)
+                 genes_call_all.append(g) 
+             #nogenes_call_all.append(nogenes_call_value)
+             #genes_call_all.append(genes_call_value)
+         nogenes_call_all = np.stack(nogenes_call_all, axis = 0)
+         genes_call_all = np.stack(genes_call_all, axis = 0)
+         nogene_avg = np.mean(nogenes_call_all, axis = 0)/len(ercc_names)
+	 print(nogenes_call_all.shape)
+         print(nogene_avg.shape)
+         trgene_avg = np.mean(genes_call_all, axis = 0)/(len(genenames)-len(ercc_names))
+         fdrmean = nogene_avg / (trgene_avg + 0.001)
+              # # divide by unique gene num
+              # fdrmean = (np.mean(nogenes_calls)/np.mean(nogenes_num))*(np.mean(genes_num)/np.mean(genes_calls))
+         print(fdrmean.shape)
+         thresh_list = np.array([init_thresh + ((i / 50)-0.05) for i in range(5)])
+         print(len(thresh_list))
+         fdr_thresh_bool = fdrmean < fdr_thresh
+         print(fdrmean)
+         print(fdr_thresh_bool)
+         thresh_list_ref = thresh_list[fdr_thresh_bool]
+         print(thresh_list_ref)
+         thresh_ref = thresh_list_ref[0]
+         print("thresh_refined: "+str(thresh_ref))
+         with open(path+"output/thresh_refined.txt", 'w') as file:
+              file.write(f"{thresh_ref}\n")
+        else:
+         with open(path+"output/thresh_refined.txt", 'w') as file:
+              file.write(f"{thresh_refined}\n") 
+
+rule bardensr_reg:
+    input:
+        fov_files = [path+"output/fov{FOV}_norm_mm2.hdf5"],
+        mask_files = [path + "output/fov{FOV}_mask.hdf5"]
+    params:
+        codeflat = codeflat,
+        niter = niter,
+        max_wiggle = max_wiggle
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    output:
+        [path+"output/fov{FOV}_reg.hdf5"]
+    run:
+        for fov_file in input.fov_files:  # Loop through all FOV input files
+            images = open_hdf5(fov_file)  # Load the input file
+            images = np.stack(images)     
+            fov_sample = int(fov_file.split('fov')[-1].split('_')[0])
+            #mask = open_hdf5(path + "output/fov"+str(fov_sample)+ "_mask.hdf5")
+            #image_maskapp = apply_mask_to_images(images, mask)
+            print(fov_file.split('fov')[-1].split('_'))
+            print("fov_sample: "+str(fov_sample))
+            mask = open_hdf5(path + "output/fov"+str(fov_sample)+ "_mask.hdf5")
+            mask = np.stack(mask)
+            register_fovs_bardensr_demons(images, mask, params.codeflat, fov_sample, max_wiggle = params.max_wiggle,  niter = params.niter)
+
+rule normalization:
+    input:
+        fov_files = [path+"output/fov{FOV}_align_corr.hdf5"],  
+        med_max = path + "output/median_max1.hdf5",
+        med_min = path + "output/median_min1.hdf5"
+    output:
+        temp([path + "output/fov{FOV}_norm.hdf5"])
+    params:
+        radius = radius
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        median_max = open_hdf5(input.med_max)
+        median_min = open_hdf5(input.med_min)
+        for fov_file in input.fov_files:  # Loop through all FOV input files
+            images = open_hdf5(fov_file)  # Load the input file
+            images = np.stack(images)
+            images = images.reshape(images.shape[0]*images.shape[1], images.shape[2], images.shape[3])
+     
+            fov_sample = int(fov_file.split('fov')[-1].split('_')[0])
+            print(fov_file.split('fov')[-1].split('_'))
+            print("fov_sample: "+str(fov_sample))
+            print(len(median_min))
+            print(median_min[0].shape)
+            round_normalization_sm(images, median_min, median_max, fov_sample)
+
+
+
+
+# Store intermediate results in a dictionary
+rule minmax1:
+    input:
+        fov_files = expand(path + "output/fov{FOV}_align_corr.hdf5", FOV=FOV_minmax),  
+    output:
+        path + "output/median_max1.hdf5",
+        path + "output/median_min1.hdf5"
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        min_values = []
+        max_values = []
+        for fov_file in input.fov_files:  # Loop through all FOV input files
+            images = open_hdf5(fov_file)  # Load the input file
+            images = np.stack(images)
+            images = images.reshape(images.shape[0]*images.shape[1], images.shape[2], images.shape[3])            
+            # Ensure the output file is correctly set for this specific FOV            
+            # Process the images
+            min, max = min_max(images)
+            min_values.append(min)
+            max_values.append(max)
+        # Convert the lists to TensorFlow tensors
+        min_values_all = np.stack(min_values, axis=0)
+        max_values_all = np.stack(max_values, axis=0)
+        # Compute the median of the min and max values across all FOVs
+        median_min = np.median(min_values_all, axis=0)
+        median_max = np.median(max_values_all, axis=0)
+        print("medmin_shape: "+str(median_min.shape))
+        save_hdf5(median_min, path + "output/median_min1.hdf5")
+        save_hdf5(median_max, path + "output/median_max1.hdf5")
+
+
+
+
+rule apply_minmax2:
+    input:
+        fov_files = [path+"output/fov{FOV}_norm.hdf5"],
+        # mask_files = [path + "output/fov{FOV}_mask.hdf5"],
+        med_max = path + "output/median_max2.hdf5",
+        med_min = path + "output/median_min2.hdf5"
+    output:
+        temp(path + "output/fov{FOV}_norm_mm2.hdf5")
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        median_max = open_hdf5(input.med_max)
+        median_min = open_hdf5(input.med_min)
+        for i in range(len(input.fov_files)):  # Loop through all FOV input files
+            # mask = open_hdf5(input.mask_files[i])  # Load the input file
+            images = open_hdf5(input.fov_files[i])  # Load the input file
+            images = np.stack(images)
+            images = images.reshape(images.shape[0]*images.shape[1], images.shape[2], images.shape[3])
+            print('medmax2: '+str(len(median_min)))
+            print('medmax2: '+str(len(median_min[0].shape)))
+            images = (images - median_min) / median_max
+            images = np.clip(images,0,1)
+            images = np.stack(images)
+            images = images.reshape(int(images.shape[0]/4),4, images.shape[1], images.shape[2])
+            fov_sample = int(input.fov_files[i].split('fov')[-1].split('_')[0])
+            # images_mask = apply_mask_to_images(images, mask)
+            save_hdf5(images, path + "output/fov"+str(fov_sample)+"_norm_mm2.hdf5")
+
+
+
+rule get_minmax2:
+    input:
+        fov_files = expand(path+ "output/fov{FOV}_norm.hdf5", FOV=FOV_minmax)
+    output:
+        path + "output/median_max2.hdf5",
+        path + "output/median_min2.hdf5"
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        min_values = []
+        max_values = []
+        for fov_file in input.fov_files:  # Loop through all FOV input files
+            images = open_hdf5(fov_file)  # Load the input file
+            images = np.stack(images)
+            images = images.reshape(images.shape[0]*images.shape[1], images.shape[2], images.shape[3])
+         
+            # Ensure the output file is correctly set for this specific FOV            
+            # Process the images
+            min, max = min_max(images)
+            min_values.append(min)
+            max_values.append(max)
+    # Convert the lists to TensorFlow tensors
+        min_values_all = np.stack(min_values, axis=0)
+        max_values_all = np.stack(max_values, axis=0)
+        # Compute the median of the min and max values across all FOVs
+        median_min = np.median(min_values_all, axis=0)
+        median_max = np.median(max_values_all, axis=0)
+        save_hdf5(median_min, path + "output/median_min2.hdf5")
+        save_hdf5(median_max, path + "output/median_max2.hdf5")
+
+
+
+
+rule apply_alignment:
+    input:
+        fov_files = [path + "output/fov{FOV}.hdf5"],
+        transforms = path + "output/transforms.hdf5" # Use 36 threads for this rule
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    output:
+        path + "output/fov{FOV}_align_corr.hdf5",
+        temp(path + "output/fov{FOV}_mask.hdf5")
+    resources:
+        time=109800  # 30:30:00 in seconds
+    run:
+        transforms = open_hdf5(input.transforms)  # Load the transforms file
+        # for i in FOVs:
+        #     images = open_hdf5(input.fov_files[i])  # Load the input file
+        #     images = np.stack(images)
+        #     print("Processing FOV: ", fov_files[i])
+        #     fov_sample = int(fov_files[i].split('fov')[-1].split('.')[0])
+        #     print("fov_sample: "+str(fov_sample))
+        #     alignment_opencv_colorbleed_corr_crop_sm(images, transforms, fov_sample)
+        for fov_file in input.fov_files:  # Loop through all FOV input files
+            images = open_hdf5(fov_file)  # Load the input file
+            images = np.stack(images)
+            print(fov_file)
+            fov_sample = int(fov_file.split('fov')[-1].split('.')[0])
+            print(fov_file.split('fov')[-1].split('.')[0])
+            print("fov_sample: "+str(fov_sample))
+            # Ensure the output file is correctly set for this specific FOV            
+            # Process the images
+            if fov_sample in FOVs:
+                alignment_opencv_colorbleed_corr_crop_sm(images, transforms, fov_sample)
+            else:
+                    save_hdf5(images, path + "output/fov"+str(fov_sample)+"_align_corr.hdf5")
+                    save_hdf5(np.zeros_like(images), path + "output/fov"+str(fov_sample)+"_mask.hdf5")
+
+
+
+
+# Define rules for each processing step
+rule channel_alignment_get_transforms_opencv_sm:
+    input:
+        fov_align = path + "output/fov" + str(fov_align) + ".hdf5"
+    output:
+        path + "output/transforms.hdf5"
+    run:
+        images = open_hdf5(input.fov_align)  # Load the input file here
+        print("Input data shape:", len(images))  # Debugging line
+        channel_alignment_get_transforms_opencv_sm(images)
+
+
+if str(dapi_path).endswith("dapi_all_z.npy"):
+    rule generate_dapi_files:
+        input:
+            dapi_images = dapi_path
+        output:
+            temp(expand(path + "output/fov{FOV}_dapi.hdf5", FOV=FOVs))
+        run:
+            dapi_images_ = np.load(input.dapi_images)
+            for i in range(len(dapi_images_)):
+                if i in FOVs:
+                    save_hdf5(dapi_images_[i], path + f"output/fov{i}_dapi.hdf5")
+else:
+    print(f"[INFO] No DAPI file found. Skipping generate_dapi_files.")
+
+
+
+# If DAPI exists, define the rule to process it
+if str(dapi_path).endswith("dapi.npy"):
+    rule generate_dapi_files:
+        input:
+            dapi_images = dapi_path
+        output:
+            temp(expand(path + "output/fov{FOV}_dapi.hdf5", FOV=FOVs))
+        run:
+            dapi_images_ = np.load(input.dapi_images)
+            for i in range(len(dapi_images_)):
+                if i in FOVs:
+                    save_hdf5(dapi_images_[i], path + f"output/fov{i}_dapi.hdf5")
+else:
+    print(f"[INFO] No DAPI file found. Skipping generate_dapi_files.")
+
+
+# If NISSL exists, define the rule to process it
+if str(nissl_path).endswith("nissl.npy"):
+    rule generate_nissl_files:
+        input:
+            nissl_images = nissl_path
+        output:
+            expand(path + "output/fov{FOV}_nissl.hdf5", FOV=FOVs)
+        run:
+            nissl_images_ = np.load(input.nissl_images)
+            for i in range(len(nissl_images_)):
+                if i in FOVs:
+                    save_hdf5(nissl_images_[i], path + f"output/fov{i}_nissl.hdf5")
+else:
+    print(f"[INFO] No NISSL file found. Skipping generate_nissl_files.")
+
+rule generate_gtca_files:
+    input:
+        gtca_images = gtca_path
+    output:
+        temp(expand(path + "output/fov{FOV}.hdf5", FOV = FOVs))
+    wildcard_constraints:
+        FOV = r"\d+"  # Only numeric FOV values
+    run:
+        gtca_images = open_hdf5(input.gtca_images)
+        for i in range(len(gtca_images)):  # Loop through all FOV input files
+            if i in FOVs:
+                save_hdf5(gtca_images[i][round_num], path+"output/fov"+str(i)+".hdf5")
+

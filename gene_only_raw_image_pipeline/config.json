@@ -1,0 +1,42 @@
+{
+    "section": "p0_test",
+    "path": "/scratch4/jfan9/manjari/done/mouse/p56/ma41_p56_a2/new_pipeline/",
+    "gtca_path": "data/image_origin.hdf5",
+    "dapi_path": "data/dapi.npy",
+    "nissl_path": "data/nissl.npy",
+    "codebook_path": "data/CAMs_TFs_barcodes_final_8nogene_spikein.csv",
+    "positions_path": "data/position_org.csv",
+    "FOV_minmax": [
+        5,
+        10,
+        15,
+        20,
+        25
+    ],
+    "fov_align": 19,
+    "precision": 0.005,
+    "radius": 20,
+    "max_wiggle": 15,
+    "niter": 80,
+    "round_num": [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "thresh_refined": 0.775,
+    "noisefloor": 0.05, 
+    "len_wid": 1000,
+    "mask_expand_dist": 14,
+    "base_code": [
+        "G",
+        "T",
+        "C",
+        "A"
+    ],
+    "fdr_thresh": 0.4,
+    "nogene_keyword": "no_gene",
+    "find_threshold": false,
+    "use_cv2_blob_detector": false,
+    "use_dapi_nissl_max": true,
+    "skip_fovs": [],
+    "evidence_tensor_iterations": 0,
+    "cellpose_model": "cyto3",
+    "expand_mask": 10,
+    "cell_segmentation_method": "maxdapi+nissl"
+}
