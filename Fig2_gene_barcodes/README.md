@@ -66,7 +66,7 @@ brain/
 │   ├── position_corr.csv
 │   └── position_org.csv
 └── STARmap_output/
-
+```
 ## Code structure
 
 └── analysis_pipeline  
