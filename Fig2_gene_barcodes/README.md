@@ -4,7 +4,7 @@
 ### For both Linux and Windows
 
 
-- use environment *BARseq3*: <code>conda env create -f environment.yaml -n BARseq3</code>
+- use environment *BARseq3*: <code>conda env create -f environment.yml -n BARseq3</code>
 - activate the environment: <code>conda activate BARseq3</code>
 - make sure CUDA, CUDNN, and NVIDIA/GPU Drivers are properly installed
 - install tensorflow based on the system: https://www.tensorflow.org/install/pip (you may need to downgrade Numpy version)
