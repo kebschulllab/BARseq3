@@ -49,7 +49,7 @@
     
   - `Run each cell`
 
-  -  `Output (Excel file with genes and barcodes information)`
+  -  `Output (Excel file with genes and barcodes information https://zenodo.org/records/19024678/files/BARseq3_Transcriptome_Barcode.tar?download=1)`
 
 
 ## Folder structure
