@@ -51,6 +51,7 @@
 
 
 ## Folder structure
+
 brain/
 ├── STARmap_ImageJ/
 │   ├── round1/
