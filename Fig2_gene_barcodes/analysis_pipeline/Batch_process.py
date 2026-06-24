@@ -10,12 +10,12 @@ base_config = {
     "filepath_dapi_all_z": "",
     "filepath_nissl": "",
     "filepath_dapi": "",
-    "round_index": [1,2],
-    "radius": 15,
+    "round_index": [1,2,3,4,5],
+    "radius": 5,
     "fdr_thresh": 0.1,
-    "expand_pixel": 7,
+    "expand_pixel": 0,
     "ifov": 0,
-    "igenes": ["Slc17a6", "Gad1", "Atoh1", "Sox14"],
+    "igenes": ["Slc17a6", "Gad1"],
     "SpGene": 'ChAlign',# 'ChAlign', 'RoAlign', 'CbCorrection', 'Normalization', 'bardensrReg', 'GeneCalling', 'Finished'
     "EpGene": "Finished",#"Finished", # 'PosReg', 'CellSeg', 'ExpMask', 'Gene2Mask', 'RmvOverlap', 'Finished'
     "SpMask": "PosReg",
@@ -24,13 +24,13 @@ base_config = {
     "bardensr_reg": False,
     "find_param": False,
     "align_method": 'OpenCV',
-    "round_num": 2,
-    "thresh_refined": 0.85,
+    "round_num": 5,
+    "thresh_refined": 0.7,
     "bardensr_patch_size": (1000, 1000),
     "bardensr_overlap": (100, 100),
     "bardensr_niter": 10,
-    "round_align": 1,
-    "dapi_round": 1
+    "round_align": 2,
+    "dapi_round": 2
 }
 '''
 
@@ -39,9 +39,9 @@ base_config = {
 sample_subsets = [
     {
         "name": "Brain1",
-        "filepath_homedir": r"Y:\Huihui\HH\STARmap01202026\Analysis_BARseq3_Transcriptome\Barcode_Gene\Brain1\\",
-        "filepath_rawdata": r"Y:\Huihui\HH\STARmap01202026\Analysis_BARseq3_Transcriptome\Barcode_Gene\Brain1\\",
-        "filepath_codebook": r"Y:\Huihui\HH\STARmap01202026\Analysis_BARseq3_Transcriptome\Barcode_Gene\Brain1\Gene_List.csv",
+        "filepath_homedir": r"",
+        "filepath_rawdata": r"",
+        "filepath_codebook": r"",
         "fov_num": 5,
         "fov_align": 1,
         "fov_minmax": [1]
