@@ -15,7 +15,7 @@ if __name__ == '__main__':
                     filepath_dapi_all_z = "//KebschullLab2/shareFlash/manjari/MA30/round1_dapi_redo/dapi_all_z.nd2",
                     filepath_dapi = "//KebschullLab2/shareFlash/manjari/MA30/round1_dapi_redo/dapi.nd2",
                     filepath_nissl = "//KebschullLab2/shareFlash/manjari/MA30/round1_dapi_redo/dapi.nd2",
-                    round_index = [1, 2, 3, 4, 5, 6, 7, 8,9],
+                    round_index = [1, 2, 3, 4, 5],
                     fov_num = 49,
                     fov_align = 2,
                     fov_minmax = [33, 26, 21, 14],
@@ -25,7 +25,7 @@ if __name__ == '__main__':
                     fdr_thresh = 0.4,
                     expand_pixel = 17,
                     ifov = 23,
-                    igenes = ["Slc17a6", "Gad1", "Atoh1", "Sox14", "nogene1", "nogene2"],
+                    igenes = ["Slc17a6", "Gad1", "nogene1", "nogene2"],
                     SpGene = 'ChAlign', # 'ChAlign', 'RoAlign', 'CbCorrection', 'Normalization', 'bardensrReg', 'GeneCalling', 'Finished'
                     EpGene = "Finished",
                     SpMask = "PosReg", # 'PosReg', 'CellSeg', 'ExpMask', 'Gene2Mask', 'RmvOverlap', 'Finished'
