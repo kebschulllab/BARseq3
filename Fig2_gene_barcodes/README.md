@@ -49,6 +49,8 @@
     
   - `Run each cell`
 
+  -  `Output (Excel file with genes and barcodes information)`
+
 
 ## Folder structure
 
