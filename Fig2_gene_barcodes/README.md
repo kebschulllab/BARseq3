@@ -13,6 +13,7 @@
 - install additional dependencies: <code>pip install n2v scanpy anndata cellpose pims-nd2 ipython imagej napari</code>
 
 ## Run pipeline locally
+
 - navigate to the "analysis_pipeline" folder
 - modify configurations in the starmap_pipeline.py file and save
         - filepath_rawdata
