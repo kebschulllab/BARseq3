@@ -16,6 +16,7 @@
 
 - navigate to the "analysis_pipeline" folder
 - modify configurations in the starmap_pipeline.py file and save
+  
   - `filepath_rawdata`
 
   - `filepath_codebook`
@@ -49,7 +50,7 @@
   - `Run each cell`
 
 
-  
+
  
 
 └── analysis_pipeline  
