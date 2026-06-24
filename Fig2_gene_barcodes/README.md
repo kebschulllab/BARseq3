@@ -1,8 +1,8 @@
 # Get Started - Running Pipeline on Local Computer
 
-## Installation
+## Installation (Less than 1h)
 ### For both Linux and Windows
-### Local installation (Less than 1h)
+
 
 - use environment *BARseq3*: <code>conda env create -f environment.yaml -n BARseq3</code>
 - activate the environment: <code>conda activate BARseq3</code>
