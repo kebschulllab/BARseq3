@@ -16,11 +16,11 @@
 
 - navigate to the "analysis_pipeline" folder
 - modify configurations in the starmap_pipeline.py file and save
-         - `filepath_rawdata`
+  - `filepath_rawdata`
 
-         - `filepath_codebook`
+  - `filepath_codebook`
 
-         - `filepath_dapi`
+  - `filepath_dapi`
 
   - `round_index = [1, 2, 3, 4, 5]`
 
@@ -37,13 +37,16 @@
   - `round_align = 2`
 
   - `dapi_align = 2`
-  - open Batch_process.py in VS Code and run
+    
+  - `open Batch_process.py in VS Code and run`
  
 ## For Barcode analysis
 
-  - open Analysis_pipeline_for_barcodes.ipynb
-  - modify file path and name
-  - Run each cell
+  - `open Analysis_pipeline_for_barcodes.ipynb`
+    
+  - `modify file path and name`
+    
+  - `Run each cell`
 
 
   
