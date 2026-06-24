@@ -51,9 +51,31 @@
 
 
 ## Folder structure
+brain/
 
+├── STARmap_ImageJ/
 
- 
+│   ├── round1/
+
+│   ├── round2/
+
+│   ├── round3/
+
+│   ├── round4/
+
+│   └── round5/
+
+├── STARmap_loading/
+
+│   ├── nissl.npy
+
+│   ├── position_corr.csv
+
+│   └── position_org.csv
+
+└── STARmap_output/
+
+## Code structure
 
 └── analysis_pipeline  
 &emsp;&emsp;├── starmap_pipeline.py              *debug version  
