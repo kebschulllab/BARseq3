@@ -16,17 +16,27 @@
 
 - navigate to the "analysis_pipeline" folder
 - modify configurations in the starmap_pipeline.py file and save
-        - filepath_rawdata
-        - filepath_codebook
-        - filepath_dapi
-        - round_index=[1,2,3,4,5]
-        - radius=5
-        - expand_pixel=0
-        - find_param= False,
-        - round_num=5,
-        - thresh_refined=0.7
-        - round_align=2
-        - dapi_align=2
+         - `filepath_rawdata`
+
+         - `filepath_codebook`
+
+         - `filepath_dapi`
+
+  - `round_index = [1, 2, 3, 4, 5]`
+
+  - `radius = 5`
+
+  - `expand_pixel = 0`
+
+  - `find_param = False`
+
+  - `round_num = 5`
+
+  - `thresh_refined = 0.7`
+
+  - `round_align = 2`
+
+  - `dapi_align = 2`
   - open Batch_process.py in VS Code and run
  
 ## For Barcode analysis
