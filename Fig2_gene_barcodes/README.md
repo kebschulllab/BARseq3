@@ -41,7 +41,7 @@
     
   - `open Batch_process.py in VS Code and run`
  
-## For Barcode analysis
+## For barcode analysis
 
   - `open Analysis_pipeline_for_barcodes.ipynb`
     
