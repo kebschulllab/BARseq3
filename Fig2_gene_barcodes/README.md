@@ -1,36 +1,42 @@
 # Get Started - Running Pipeline on Local Computer
 
-## First, clone this repository
-clone the code under this branch:
-<code>git clone --single-branch --branch master https://github.com/mmganant/STARmap_analysis.git</code>
-
-## Next, activate the Conda environment
+## Installation
 ### For both Linux and Windows
-- use environment *starmap*: <code>conda create -n starmap python==3.9.2</code>
-- activate the environment: <code>conda activate starmap</code>
+### Local installation (Less than 1h)
+
+- use environment *BARseq3*: <code>conda env create -f environment.yaml -n BARseq3</code>
+- activate the environment: <code>conda activate BARseq3</code>
 - make sure CUDA, CUDNN, and NVIDIA/GPU Drivers are properly installed
 - install tensorflow based on the system: https://www.tensorflow.org/install/pip (you may need to downgrade Numpy version)
 - install bardensr dependency: <code>pip install --upgrade git+https://github.com/jacksonloper/bardensr.git</code>
 - **note: you must have CUDA properly downloaded and enabled for fast GPU processing
 - install additional dependencies: <code>pip install n2v scanpy anndata cellpose pims-nd2 ipython imagej napari</code>
 
-## KebschullLab:
-To mount NAS on WSL:
-<code>sudo mkdir /mnt/pp3</code>
-<code>sudo mount -t cifs -o username=Manju,password=KebschullFan2021,uid=1000,gid=1000 //10.99.5.31/purple_pitcher_3 /mnt/pp3</code>
-(Change pp3 and network path for different NAS folders)
-
-## Then, modify the configurations for your dataset/filepaths/etc
+## Run pipeline locally
 - navigate to the "analysis_pipeline" folder
 - modify configurations in the starmap_pipeline.py file and save
+        filepath_rawdata
+        filepath_codebook
+        filepath_dapi
+        round_index=[1,2,3,4,5]
+        radius=5
+        expand_pixel=0
+        find_param= False,
+        round_num=5,
+        thresh_refined=0.7
+        round_align=2
+        dapi_align=2
+  - open Batch_process.py in VS Code and run
+ 
+## For Barcode analysis
 
-## Finally, run the pipeline
-- run <code>python [path to analysis pipeline folder]/starmap_pipeline.py</code>
+  - open Analysis_pipeline_for_barcodes.ipynb
+  - modify file path and name
+  - Run each cell
 
-# File Hierarchies
 
-## Run the script
-necessary files for running the pipeline:  
+  
+ 
 
 └── analysis_pipeline  
 &emsp;&emsp;├── starmap_pipeline.py              *debug version  
