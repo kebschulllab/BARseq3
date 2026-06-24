@@ -21,7 +21,7 @@ from datetime import datetime
 # import sitkibex
 # import tensorflow
 
-def create_codebook_num(filepath_codebook, round_num, base_code): # working with round num
+def create_codebook_num(filepath_codebook, round_num_for_gene_call, base_code): # working with round num
     genenames, gene_codes = [], []
     with open(filepath_codebook, newline='') as f:
         reader = csv.reader(f)
@@ -31,7 +31,7 @@ def create_codebook_num(filepath_codebook, round_num, base_code): # working with
                 genenames.append(row[0].strip(codecs.BOM_UTF8.decode(f.encoding)))
             else:
                 genenames.append(row[0])
-            gene_codes.append(row[1][0:round_num])
+            gene_codes.append(row[1][0:round_num_for_gene_call])
     check_head = set(gene_codes[0])
     available = set('ATGC')
     if not check_head.issubset(available):
@@ -40,7 +40,7 @@ def create_codebook_num(filepath_codebook, round_num, base_code): # working with
     print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+"genenames: ", genenames)
     print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+"gene_codes: ", gene_codes)
 
-    codebook = np.full((round_num, 4, len(gene_codes)), False)
+    codebook = np.full((round_num_for_gene_call, 4, len(gene_codes)), False)
     for tagNum, tag in enumerate(gene_codes):
         for roundNum, letter in enumerate(tag):
             if letter == base_code[0]: 
@@ -55,7 +55,7 @@ def create_codebook_num(filepath_codebook, round_num, base_code): # working with
     
     return codebook, genenames, codeflat
 
-def create_codebook(filepath_codebook, round_num, base_code): # working with round index
+def create_codebook(filepath_codebook, round_num_for_gene_call, base_code): # working with round index
     genenames, gene_codes = [], []
     with open(filepath_codebook, newline='') as f:
         reader = csv.reader(f)
@@ -70,13 +70,13 @@ def create_codebook(filepath_codebook, round_num, base_code): # working with rou
                     genenames.append(row[0])
                 barcode = np.array([*row[1]])
                 # print(barcode)
-                barcode_subset = barcode[round_num]
+                barcode_subset = barcode[round_num_for_gene_call]
                 # print(barcode_subset)
                 gene_codes.append(barcode_subset)
     print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+"genenames: ", genenames)
     print(datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "        "+"gene_codes: ", gene_codes)
 
-    codebook = np.full((len(round_num), 4, len(gene_codes)), False)
+    codebook = np.full((len(round_num_for_gene_call), 4, len(gene_codes)), False)
     for tagNum, tag in enumerate(gene_codes):
         for roundNum, letter in enumerate(tag):
             if letter == base_code[0]: 
@@ -92,13 +92,13 @@ def create_codebook(filepath_codebook, round_num, base_code): # working with rou
 
 
 
-def find_params_gradient(rounds_all, codeflat, genenames, nogene_keyword, filepath_val, fov_minmax, round_num, fdr_thresh):
+def find_params_gradient(rounds_all, codeflat, genenames, nogene_keyword, filepath_val, fov_minmax, round_num_for_gene_call, fdr_thresh):
     # rounds_all = image_preped
     R = rounds_all[0].shape[0]
     C = rounds_all[0].shape[1]
     rounds_all = np.stack(rounds_all, axis = 0)
     rounds_all = rounds_all[fov_minmax,:]
-    rounds_all = rounds_all[:,round_num]
+    #rounds_all = rounds_all[:,round_num_for_gene_call]
     noisefloor = 0.05
     ercc_names = [s for s in genenames if nogene_keyword in s]
     ercc_codes = np.where(np.in1d(genenames, ercc_names))[0]
@@ -232,7 +232,7 @@ def find_peaks_in_image(image, codeflat, thresh_refined, noisefloor, len_wid, FO
          #                                                    rounds=None,estimate_colormixing=False, estimate_phasing=False,
          #                                                    use_tqdm_notebook=False)[0]
 
-         spots=bardensr.spot_calling.find_peaks(et,thresh_refined,poolsize=(1,3,3), use_tqdm_notebook=False)
+         spots=bardensr.spot_calling.find_peaks(et,thresh_refined,poolsize=(0,3,3), use_tqdm_notebook=False)
          all_spots.append(spots)
          #positions.append([i // (image.shape[3]//patch_size[3]), i % (image.shape[4]//patch_size[4])])
 
@@ -245,11 +245,11 @@ def find_peaks_in_image(image, codeflat, thresh_refined, noisefloor, len_wid, FO
              positions.append([x,y])
      return all_spots, positions
 
-def call_genes_large_data(image, positions_glob, codeflat, codebook, genenames,thresh_refined, noisefloor, len_wid, round_num):
+def call_genes_large_data(image, positions_glob, codeflat, codebook, genenames,thresh_refined, noisefloor, len_wid, round_num_for_gene_call):
      all_spots_fov = []
      image = np.stack(image, axis = 0)
      all_spots_fov_df = pd.DataFrame()
-     image = image[:,round_num]
+     #image = image[:,round_num_for_gene_call]
      for i in range(len(image)):
          genes_result, positions = find_peaks_in_image(image[i], codeflat, thresh_refined, noisefloor, len_wid, i)
          all_spots_df = pd.DataFrame()

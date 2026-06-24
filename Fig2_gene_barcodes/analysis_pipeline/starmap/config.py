@@ -49,7 +49,7 @@ class Config(argparse.Namespace):
         self.align_method = 'ImageJ' # option with 'ImageJ' or 'OpenCV'
         self.dapi_round = 1
         self.fov_align = 26
-        self.round_align = 1
+        self.round_align = 0
         # for color-bleed correction
         self.cc_coeff = [0.05, 0.45, 0.2, 0.05]
         self.fdr_thresh = 0.05
@@ -64,16 +64,16 @@ class Config(argparse.Namespace):
 
         # gene calling
         self.base_code = ['G', 'T', 'C', 'A'] # order of base in codebook
-        self.thresh_refined = 0.7 # threshold for gene calling
-        self.noisefloor = 0.05
-        self.spot_poolsize = (np.int64(0),np.int64(3),np.int64(3)) # spots size for gene calling
+        self.thresh_refined = 0.6 # threshold for gene calling
+        self.noisefloor = 0.04
+        self.spot_poolsize = (np.int64(0),np.int64(3),np.int64(3)) # spots size for gene calling  original (np.int64(0),np.int64(3),np.int64(3))
         self.len_wid = 500 # size of patches
         self.nogene_keyword = "no_gene"
 
         # cell segmantation
-        self.cellpose_model = 'cyto'
-        self.cellpose_channel = [0, 1]
-        self.cellpose_diameter = 50
+        self.cellpose_model =  'cyto3'#'cyto3'
+        self.cellpose_channel = [0, 1] # original [0,1]
+        self.cellpose_diameter = 35
         self.expand_pixel = 5
 
         # fov dimentions
