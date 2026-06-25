@@ -4,8 +4,11 @@
 
 
 git clone --branch main --filter=blob:none --sparse <code>https://github.com/kebschulllab/BARseq3.git</code>
+
 cd BARseq3
+
 git sparse-checkout set BARseq3_pipeline/gene_barcode_raw_image_pipeline
+
 cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
 
 
