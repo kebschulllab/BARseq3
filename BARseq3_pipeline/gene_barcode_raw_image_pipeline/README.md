@@ -2,7 +2,7 @@
 
 ## Installation (Less than 1h)
 
-clone the code under this branch: git clone --single-branch --branch master https://github.com/kebschulllab/BARseq3/BARseq3_pipeline/gene_barcode_raw_image_pipeline.git
+clone the code under this branch: <code>git clone --single-branch --branch master https://github.com/kebschulllab/BARseq3/BARseq3_pipeline/gene_barcode_raw_image_pipeline.git <code>
 
 ### For both Linux and Windows
 
