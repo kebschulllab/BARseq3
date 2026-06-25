@@ -1,8 +1,8 @@
 # Get Started - Running Pipeline on Local Computer
 
 ## First, clone this repository
-clone the code under this branch:
-<code>git clone --single-branch --branch master https://github.com/mmganant/STARmap_analysis.git</code>
+clone the starmap analysis code for both BARSeq3 analyses first: 
+<code>clone the code under this branch: git clone --single-branch --branch master https://github.com/kebschulllab/BARseq3/BARseq3_pipeline.git</code>
 
 ## Next, activate the Conda environment
 ### For both Linux and Windows
