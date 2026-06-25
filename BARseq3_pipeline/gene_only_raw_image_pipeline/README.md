@@ -7,7 +7,13 @@ If logging into rockfish then
 - <code>module load anaconda</code>
 
 Navigate to the directory you want to clone the BARseq3 repository into then clone the code under this branch:
-- <code>git clone --single-branch --branch master https://github.com/kebschulllab/BARseq3/BARseq3_pipeline.git</code>
+
+```bash
+git clone --branch main --filter=blob:none --sparse https://github.com/kebschulllab/BARseq3.git
+cd BARseq3
+git sparse-checkout set BARseq3_pipeline
+cd BARseq3_pipeline
+```
 
 If this method does not work then use an ssh to clone the repository:
 - generate a rockfish key first using the methods described here: https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent?platform=Linux
