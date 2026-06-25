@@ -1,6 +1,9 @@
 # Get Started - Running Pipeline on Local Computer
 
 ## Installation (Less than 1h)
+
+clone the code under this branch: git clone --single-branch --branch master https://github.com/kebschulllab/BARseq3/BARseq3_pipeline/gene_barcode_raw_image_pipeline.git
+
 ### For both Linux and Windows
 
 
