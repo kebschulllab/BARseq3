@@ -59,7 +59,7 @@ If this method does not work then use an ssh to clone the repository:
 ### You can also directly edit the Snakemake_nopatch file by commenting out the config paths and adding paths directly to your files.
 - If you use this method then edit the Snakemake_nopatch file using the above vi method. If you use this method the config files and method will not work unless you edit back in the config paths.
 
-#### If you use this method, then save the STARmap analysis directory within the experimental directory so that you can run mulitple sessions simultaneously, ex place copies of the STARmap analysis directory in the Section 1 directory and Section 2 directory. This will allow for one SLURM submission for Section 1 and another for Section 2
+#### If you use this method, then save the STARmap analysis directory within the experimental directory so that you can run mulitple sessions simultaneously (ex. place copies of the STARmap analysis directory into a Section 1 directory and Section 2 directory. This will allow for one SLURM submission for Section 1 and another for Section 2, and they will run simultaneously)
 
 #### Once ready to run
 - <code>nohup snakemake --slurm --jobs   "$(python -c 'import h5py; f=h5py.File("image_origin.hdf5","r"); print(int(len(f["list"])))')"   -s Snakefile_nopatch   --profile profile   --latency-wait 300   --rerun-incomplete   > snakemake_output.log 2>&1 &</code>
