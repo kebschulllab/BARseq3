@@ -45,7 +45,6 @@ clone the code under this branch: <code>git clone --single-branch --branch maste
   - `open Batch_process.py in VS Code and run`
  
 ## For barcode analysis
-
   - `open Analysis_pipeline_for_barcodes.ipynb`
     
   - `modify file path and name`
