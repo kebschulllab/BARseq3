@@ -6,14 +6,14 @@ If logging into rockfish then
 - then activate anaconda
 - <code>module load anaconda</code>
 
-Navigate to the directory you want to clone the STARmap repository into then clone the code under this branch:
-- <code>git clone --single-branch --branch snakemake https://github.com/mmganant/STARmap_analysis.git</code>
+Navigate to the directory you want to clone the BARseq3 repository into then clone the code under this branch:
+- <code>git clone --single-branch --branch master https://github.com/kebschulllab/BARseq3/BARseq3_pipeline.git</code>
 
 If this method does not work then use an ssh to clone the repository:
 - generate a rockfish key first using the methods described here: https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent?platform=Linux
 - Add the key to your github account using these instructions: https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account.
 - to copy the key open using <code>vim ~/.ssh/id_ed25519.pub</code> then copy it
-- then clone the repository using <code>git clone --single-branch --branch snakemake git@github.com:mmganant/STARmap_analysis.git</code>
+- then clone the repository using <code>git clone --single-branch --branch master https://github.com/kebschulllab/BARseq3/BARseq3_pipeline.git</code>
 
 ## Next, activate the Conda environment
 ### Create environment, if not already created
