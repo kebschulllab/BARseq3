@@ -20,9 +20,9 @@ clone the code under this branch: <code>git clone --single-branch --branch maste
 - navigate to the "analysis_pipeline" folder
 - modify configurations in the starmap_pipeline.py file and save
   
-  - `filepath_rawdata`
+    - `filepath_rawdata`
 
-  - `filepath_codebook`
+    - `filepath_codebook`
 
   - `filepath_dapi`
 
