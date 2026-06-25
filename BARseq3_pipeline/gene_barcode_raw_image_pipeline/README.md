@@ -2,7 +2,6 @@
 
 ## Installation (Less than 1h)
 
-`git clone --branch main --filter=blob:none --sparse` [https://github.com/kebschulllab/BARseq3.git](https://github.com/kebschulllab/BARseq3.git)
 
 ```bash
 git clone --branch main --filter=blob:none --sparse https://github.com/kebschulllab/BARseq3.git
