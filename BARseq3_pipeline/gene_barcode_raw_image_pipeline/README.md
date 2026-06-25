@@ -47,7 +47,7 @@ cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
 
   - `round_num = 5`
 
-  - `thresh_refined = 0.7`
+  - `thresh_refined = 0.6`
 
   - `round_align = 2`
 
@@ -56,6 +56,8 @@ cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
   - `open Batch_process.py in VS Code and run`
  
 ## For barcode analysis
+
+  - `using gene pipeline to get aligned.hdf5 file`
 
   - `open Analysis_pipeline_for_barcodes.ipynb`
     
