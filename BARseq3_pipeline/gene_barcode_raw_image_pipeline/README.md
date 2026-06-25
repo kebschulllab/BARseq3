@@ -19,7 +19,7 @@ cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
 
 
 - use environment *starmap*: <code>conda env create -f environment.yml -n starmap</code>
-- activate the environment: <code>conda activate BARseq3</code>
+- activate the environment: <code>conda activate starmap</code>
 - make sure CUDA, CUDNN, and NVIDIA/GPU Drivers are properly installed
 - install tensorflow based on the system: https://www.tensorflow.org/install/pip (you may need to downgrade Numpy version)
 - install bardensr dependency: <code>pip install --upgrade git+https://github.com/jacksonloper/bardensr.git</code>
