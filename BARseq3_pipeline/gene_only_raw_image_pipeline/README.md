@@ -1,156 +1,139 @@
-# Get Started - Running Pipeline on Local Computer
+# Get Started
 
 ## First, clone this repository
-clone the starmap analysis code for both BARSeq3 analyses first: 
-<code>clone the code under this branch: git clone --single-branch --branch master https://github.com/kebschulllab/BARseq3/BARseq3_pipeline.git</code>
+If logging into rockfish then 
+- <code>ssh -Y login.rockfish.jhu.edu -l userid</code>
+- then activate anaconda
+- <code>module load anaconda</code>
+
+Navigate to the directory you want to clone the STARmap repository into then clone the code under this branch:
+- <code>git clone --single-branch --branch snakemake https://github.com/mmganant/STARmap_analysis.git</code>
+
+If this method does not work then use an ssh to clone the repository:
+- generate a rockfish key first using the methods described here: https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent?platform=Linux
+- Add the key to your github account using these instructions: https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account.
+- to copy the key open using <code>vim ~/.ssh/id_ed25519.pub</code> then copy it
+- then clone the repository using <code>git clone --single-branch --branch snakemake git@github.com:mmganant/STARmap_analysis.git</code>
 
 ## Next, activate the Conda environment
-### For both Linux and Windows
+### Create environment, if not already created
 - use environment *starmap*: <code>conda create -n starmap python==3.9.2</code>
 - activate the environment: <code>conda activate starmap</code>
 - make sure CUDA, CUDNN, and NVIDIA/GPU Drivers are properly installed
 - install tensorflow based on the system: https://www.tensorflow.org/install/pip (you may need to downgrade Numpy version)
-- install bardensr dependency: <code>pip install --upgrade git+https://github.com/jacksonloper/bardensr.git</code>
-- **note: you must have CUDA properly downloaded and enabled for fast GPU processing
-- install additional dependencies: <code>pip install n2v scanpy anndata cellpose pims-nd2 ipython imagej napari</code>
+   - this should be tensorflow version 2.18.0 on Rockfish!!
+   - <code>python3 -m pip install tensorflow==2.18</code>
+- install bardensr dependency:
+   -<code>pip install --upgrade git+https://github.com/jacksonloper/bardensr.git</code>
+   -**note: you must have CUDA properly downloaded and enabled for fast GPU processing
+- install additional dependencies: <code>pip install n2v scanpy anndata cellpose pims-nd2 ipython imagej napari SimpleITK</code>
+- pip install snakemake
+- pip install pulp==2.5.1
 
-## KebschullLab:
-To mount NAS on WSL:
-<code>sudo mkdir /mnt/pp3</code>
-<code>sudo mount -t cifs -o username=Manju,password=KebschullFan2021,uid=1000,gid=1000 //10.99.5.31/purple_pitcher_3 /mnt/pp3</code>
-(Change pp3 and network path for different NAS folders)
+## Running the the starmap analysis pipeline
 
-## Then, modify the configurations for your dataset/filepaths/etc
-- navigate to the "analysis_pipeline" folder
-- modify configurations in the starmap_pipeline.py file and save
+### Each time you login into Rockfish, you need to activate the following modules and activate the environment in this order:
+1. <code>module load anaconda</code>
+2. <code>conda activate starmap</code>
+3. <code>module load cuda/12.5.0 cudnn/9.2.0</code>
 
-## Finally, run the pipeline
-- run <code>python [path to analysis pipeline folder]/starmap_pipeline.py</code>
+### If you want to use the config.json method of running the pipeline then modify the configurations for your dataset/filepaths/etc
+- navigate to the folder containing the "config.json" document
+- type <code>vi config.json</code> into the terminal to activate the text editor
+- press <code>i</code> to insert text and change the configurations at the top of the file
+- press <code>Esc</code>, then <code>:wq!</code> to write the changes to the document
+- if you do not want to save your edits then just hit <code>:q!</code>
+- ensure that the config.yaml file in profile folder found in the STARmap_analysis folder has the correct account name for the rockfish account that you are using.
+- If you want to submit multiple sectioned jobs using run_all_configs_snakemake_nohup then ensure that the filepaths are correctly leading to your config directory.    
+
+#### Once ready to run
+- run <code>./run_starmap_snakemake_nohup.sh</code>
+- this will write the output log to snakemake_output.log ... you can look at this log by typing <code>cat snakemake_output.log</code>
+
+### You can also directly edit the Snakemake_nopatch file by commenting out the config paths and adding paths directly to your files.
+- If you use this method then edit the Snakemake_nopatch file using the above vi method. If you use this method the config files and method will not work unless you edit back in the config paths.
+
+#### If you use this method, then save the STARmap analysis directory within the experimental directory so that you can run mulitple sessions simultaneously, ex place copies of the STARmap analysis directory in the Section 1 directory and Section 2 directory. This will allow for one SLURM submission for Section 1 and another for Section 2
+
+#### Once ready to run
+- <code>nohup snakemake --slurm --jobs   "$(python -c 'import h5py; f=h5py.File("image_origin.hdf5","r"); print(int(len(f["list"])))')"   -s Snakefile_nopatch   --profile profile   --latency-wait 300   --rerun-incomplete   > snakemake_output.log 2>&1 &</code>
+- change the "image_origin.hdf5" so that it is the path for your own "image_origin.hdf5" file. If for some reason that does not work then just type in the number of FOVs you are running:
+   - <code>nohup snakemake --slurm --jobs 34 -s Snakefile_nopatch   --profile profile   --latency-wait 300   --rerun-incomplete   > snakemake_output.log 2>&1 &</code>
+
+## Check code progress
+the code should run fine. If you want to check the progress of it then type in <code>cat snakemake_output.log</code>
 
 # File Hierarchies
 
 ## Run the script
 necessary files for running the pipeline:  
 
-└── analysis_pipeline  
-&emsp;&emsp;├── starmap_pipeline.py              *debug version  
-&emsp;&emsp;├── config/                          *save config files  
-&emsp;&emsp;│&emsp;&emsp;└── starmap_config_experiment.json  
-&emsp;&emsp;├── log/                             *save output log  
-&emsp;&emsp;│&emsp;&emsp;└── output_example_mm_dd.txt  
-&emsp;&emsp;└── starmap/                         *save starmap scripts  
-&emsp;&emsp; &emsp;&emsp;├── io.py  
-&emsp;&emsp; &emsp;&emsp;├── preprocessing.py  
-&emsp;&emsp; &emsp;&emsp;├── gene_calling.py  
-&emsp;&emsp; &emsp;&emsp;├── cell_segmentation.py  
-&emsp;&emsp; &emsp;&emsp;├── stitch_images.ijm  
-&emsp;&emsp; &emsp;&emsp;├── align_channels.ijm  
-&emsp;&emsp; &emsp;&emsp;└── align_rounds.ijm  
+└── ~~ data path (entered by user during configuration) ~~  
+&emsp;&emsp;├── image_origin.hdf5           
 
-## Raw Data Structure
-please make sure that your raw data folder will structured like the following with max-projected file named "max_proj.nd2" and saved in each directory for roundx, or you can change the code part for how raw data is read in.
+&emsp;&emsp;├── codebook.csv  * can be named something else - must specify during config
 
-└── filepath_rawdata/  
-&emsp;&emsp;├── round1/  
-&emsp;&emsp;│&emsp;&emsp;├── ChannelG,T,C,A_Seq0000.nd2  
-&emsp;&emsp;│&emsp;&emsp;└── max_proj.nd2  
-&emsp;&emsp;├── round2/  
-&emsp;&emsp;│&emsp;&emsp;├── ChannelG,T,C,A_Seq0000.nd2  
-&emsp;&emsp;│&emsp;&emsp;└── max_proj.nd2  
-&emsp;&emsp;└── .../  
+&emsp;&emsp;├── dapi.npy 
+
+&emsp;&emsp;├── positions_org.csv     
+
+&emsp;&emsp;├── output/       * output created in the same folder
+
+&emsp;&emsp;&emsp;&emsp;├── adata.h5ad
+
 
 ## Notes for config
 |variables           |notes                                          |
 | ------------------ | --------------------------------------------- |
-|**filepath_rawdata**|path to directory that saves raw max_proj files|
-|**filepath_homedir**|path to output home directory|
-|**filepath_codebook**|path to codebook (.csv file)|
+|**path**|path to where output file is created|
+|**gtca_path**|path to where image_origin.hdf5 is stored|
+|**dapi_path**|path to where dapi_all_z is stored|
+|**positions_path**|path to where positions are stored (*.csv)|
+|**codebook_path**|path to where codebook is stored (*.csv)|
+|**FOVs**|range of field of views|
+|**FOV_minmax**|field of views used for computing min/max and find threshold|
 |**filepath_dapi**|path to dapi img|
-|**round_index**|total rounds [1 ,2 ,3, 4, 5, 6] start from 1 :exclamation: should include more than one round|
-|**fov_align**|change to field of view with as many dots as possible|
+|**radius**|radius of background subtraction|
+|**max_wiggle**|maximum displacement with bardensr registration|
+|**niter**|number of iterations bardensr registration|
+|**round_num**|total rounds [1 ,2 ,3, 4, 5, 6] start from 1 :exclamation: should include more than one round|
+|**fov_align**|field of view used to perform channel alignment correction - change to field of view with as many dots as possible|
 |cc_coeff|[zero_one, one_zero, two_three, three_two]|
 |**fov_minmax**|specify the fovs for calculating the minimum and maximum values|
 |radius|set the radius of background subtraction (larger -> less background subtracted)|
 |base_code|the list of base in codebook|
-|**find_param**|1 call find_params() to calculate thresh_refined, noisefloor|
-|thresh_refined, noisefloor|for gene calling|
-|expand_pixel|how many pixels to expand by|
-|**ifov**|specify the number of fov interested|
-|**igenes**|specify the number of genes interested|
+|**thresh_refined**|threshold used for calling genes if find_threshold = False|
+|**find_threshold**|find threshold (True) or use thresh_refined (False)|
+|**precision**|precision of threshold if find_threshold = True|
+|**output_cellboundaries**|outputs the segmentation boundaries in Vizgen format = True|
+|**use_dapi_nissl_max**|use max projected DAPI and/or NISSL for cell segmentation = True|
+|**expand_dist**|the number of pixels to expand the cell segmentation masks = 15|
+|**use_cv2_blob_detector**|method to use for alignment, default is scimmage = False|
+|**nogene_keyword**|keyword for your nogene used in FDR calculation = "nogene"|
+|**fdr_FOVs_to_exclude**|FOVs to exclude from the average threshold calculation = []|
 
-## About output results
-you can specify the filepath of the directory(*filepath_homedir*) which stores all the output  
-all the output files will be stored in *filepath_homedir* like:  
 
-└── filepath_homedir/  
-&emsp;&emsp;├── STARmap_ImageJ/  
-&emsp;&emsp;│ &emsp;&emsp;├── round1/  
-&emsp;&emsp;│ &emsp;&emsp;│ &emsp;├── transf  
-&emsp;&emsp;│ &emsp;&emsp;│ &emsp;└── .tiff files (chcorr & roundcorr)  
-&emsp;&emsp;│ &emsp;&emsp;└── .../  
-&emsp;&emsp;├── STARmap_loadImg/  
-&emsp;&emsp;│ &emsp;&emsp;├── roundx.npy...  
-&emsp;&emsp;│ &emsp;&emsp;├── dapi.npy  
-&emsp;&emsp;│ &emsp;&emsp;├── position_org.csv  
-&emsp;&emsp;│ &emsp;&emsp;├── position_corr.csv  
-&emsp;&emsp;│ &emsp;&emsp;└── position_reg.csv  
-&emsp;&emsp;└── STARmap_output/  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── validation/  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;├── alignment/  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;│&emsp;&emsp;├── *.tiff* after channel alignment  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;│&emsp;&emsp;└── *.tiff* after round alignment  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;├── thresh_refined.txt  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;├── starmap_config.json  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;├── full_dapi_img.png  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;├── gene_results.png  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;├── gene_all.png  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;│&emsp;&emsp;└── gene_igenes.png  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── image_aligned.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── image_cropped.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── image_masks.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── image_corrected.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── image_normed.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── image_preped.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── gene_called.csv  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── gene_mapped.csv  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── gene_trimmed.csv  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── gene_anndata *file type not decided yet  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── mask_expanded.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── mask_mapped.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;├── mask_trimmed.hdf5  
-&emsp;&emsp;&nbsp;&nbsp;&emsp;&emsp;└── cell_deleted.txt  
+example:
+path = "ma31_e13_b5/" #(Snakefile path)
+gtca_path = path + "" #image_origin.hdf5
+dapi_path = path + "" # dapi_all_z.npy
+codebook_path = path + "CAMs_TFs_barcodes_final_8nogene_spikein.csv"
+positions_path = path + "position_org.csv"
+positions_glob = positions_path
 
-### Notes for output  
-1. STARmap_ImageJ/: saves all the intermediate files while performing alignment with PyImageJ  
-   - round*x*: files from each round x
-     - transf/: saves both direct and reverse transformation configs for channel alignment and round alignment for each round
-2. STARmap_loadImg/: saves all the files processed from raw image data  
-   - round*x*.npy: raw data for each round x
-   - dapi.npy: raw data for dapi image
-   - positions_org.csv: original positions of fovs loading from dapi image
-   - positions_corr.csv: positions corrected by align all fovs
-   - **positions_reg.csv**: positions registered through grid stitching
-3. STARmap_output/: saves intermediate data from each subprocessing
-   - validation/: saves figs for validation
-     - alignment/: saves tiff files after channel and round alignment in ifov
-     - thresh_refined.txt: saves the thresh_refined and noisefloor if find_params is TRUE
-     - starmap_config.json: back up the json config
-     - **full_dapi_img.png**: plot the full dapi image
-     - **gene_results**.png: a bar plot summarizes gene calls
-     - **gene_all.png**: plot all the gene calls distribution over the dapi image
-     - **gene_igenes.png**: plot the gene that is interested in over the dapi image
-   - image_aligned.hdf5: data of round images after alignment
-   - image_cropped.hdf5: data of round images after croping masks
-   - image_masks.hdf5: data of masks after croping masks
-   - image_corrected.hdf5: data of round images after color correction
-   - image_normed.hdf5: data of round images after normalization
-   - image_aligned.hdf5: data of round images after alignment
-   - **image_preped.hdf5**: data of round images after applying masks
-   - gene_called.csv: result of genes calls
-   - gene_mapped.csv: result of genes calls mapped to cell masks
-   - **gene_trimmed.csv**: result of genes calls trimmed through removing repeated cells within overlap
-   - gene_anndata: result of genes calls in annData *file type not decided yet
-   - mask_expanded.hdf5: cell masks expanded by certain pixel
-   - mask_mapped.hdf5: cell masks mapped to genes calls
-   - **mask_trimmed.hdf5**: cell masks trimmed through removing repeated cells within overlap
-   - cell_deleted.txt: repeated cells within overlap 
+
+FOVs = range(35)
+FOV_minmax = np.array([10,20,5,7,17])
+fov_align = 7
+radius = 10
+max_wiggle = 15
+niter = 80
+round_num =  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+noisefloor = 0.05,
+len_wid = 1000,
+base_code = ["G", "T", "C", "A"]
+fdr_thresh = 0.2
+nogene_keyword = "no_gene"
+thresh_refined = 0.75,
+find_threshold = False
+precision = 0.005
