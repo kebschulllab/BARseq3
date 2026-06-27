@@ -30,42 +30,19 @@ cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
 
 - navigate to the "analysis_pipeline" folder
 - modify configurations in the starmap_pipeline.py file and save
-  
-  - `filepath_rawdata`
-
-  - `filepath_codebook`
-
-  - `filepath_dapi`
-
-  - `round_index = [1, 2, 3, 4, 5]`
-
-  - `radius = 5`
-
-  - `expand_pixel = 0`
-
-  - `find_param = False`
-
-  - `round_num = 5`
-
-  - `thresh_refined = 0.6`
-
-  - `round_align = 2`
-
-  - `dapi_align = 2`
-    
-  - `open Batch_process.py in VS Code and run`
+- open pipeline(BARseq2_barcode_gene.py/BARseq_gene.py) in VS Code and run
  
 ## For barcode analysis
 
   - `using gene pipeline to get aligned.hdf5 file`
 
-  - `open Analysis_pipeline_for_barcodes.ipynb`
+  - `open Analysis_pipeline_for_barcodes.ipynb or BARseq2/3_Barcode.ipynb`
     
   - `modify file path and name`
     
   - `run each cell`
 
-  -  `output (Excel file with genes and barcodes information https://zenodo.org/records/19024678/files/BARseq3_Transcriptome_Barcode.tar?download=1)`
+  -  `output (Excel file with genes and barcodes information)`
 
 
 ## Folder structure
