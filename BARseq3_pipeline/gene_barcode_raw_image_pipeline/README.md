@@ -30,7 +30,7 @@ cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
 
 - navigate to the "analysis_pipeline" folder
 - modify configurations in the starmap_pipeline.py file and save
-- open pipeline(BARseq2_barcode_gene.py/BARseq_gene.py) in VS Code and run
+- open pipeline(BARseq2/3_barcode_gene_only.py/BARseq_gene.py) in VS Code and run
  
 ## For barcode analysis
 
