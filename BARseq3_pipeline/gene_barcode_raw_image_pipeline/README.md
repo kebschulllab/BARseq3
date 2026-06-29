@@ -36,7 +36,7 @@ cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
 
   - `using gene pipeline to get aligned.hdf5 file`
 
-  - `open Analysis_pipeline_for_barcodes.ipynb or BARseq2/3_Barcode.ipynb`
+  - `open Analysis_pipeline_for_barcodes.ipynb(General pipeline) or BARseq2/3_Barcode.ipynb (For Fig. 2E)`
     
   - `modify file path and name`
     
@@ -45,7 +45,7 @@ cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
   -  `output (Excel file with genes and barcodes information)`
 
 
-## Folder structure
+## Input Folder structure
 
 
 ```text
