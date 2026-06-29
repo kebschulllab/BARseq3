@@ -45,7 +45,7 @@ cd BARseq3_pipeline/gene_barcode_raw_image_pipeline
   -  `output (Excel file with genes and barcodes information)`
 
 
-## Input Folder structure
+## Input Data structure
 
 
 ```text
