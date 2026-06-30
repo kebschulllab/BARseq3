@@ -1,11 +1,3 @@
-# Datapoint CSV Code Only
-
-This folder now contains only the code needed for:
-
-- Pcp2 mean amplicons per cell in Purkinje-cell FOVs
-- Pcp2 mean amplicons per matched brainstem regions
-
-
 ## Pcp2 mean amplicons per cell in Purkinje-cell FOVs
 
 - `pcp2_slice_replicate_ratio_normlog_plot.py`
