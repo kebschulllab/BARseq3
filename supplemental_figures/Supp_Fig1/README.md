@@ -1,3 +1,6 @@
+- `Supplemental_figure1_intensity_across_rounds`
+  - Contains the code to quantify amplicon fluorescence across rounds of sequencing 
+
 ## BARseq2
   ### Barcoded Cells
   - `BARseq2_Barcoded_cell_gad1_vglut1.xlsx`
@@ -34,9 +37,3 @@
   - `cell-type classification.ipynb`
     - Contains the code for cell-type classification.
 
-
-
-
-
-- `Supplemental_figure1_intensity_across_rounds`
-  - Contains the code to quantify amplicon fluorescence across rounds of sequencing 
