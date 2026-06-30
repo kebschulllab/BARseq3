@@ -7,7 +7,7 @@
   - BARseq2 cell classification.
 
 - `BARseq2_Barcoded_cell_Gad1_Vglut1.xlsx`
-  - Amplicons of Vglut1and Gad1 in BARseq2 bardcoded cell.
+  - Amplicons of Vglut1and Gad1 in BARseq2 bardcoded Vglut1 and Gad1 cells.
 
 - `BARseq3_Barcodelist.csv`
    - BARseq3 output processed through the BARseq3 computational pipeline.
@@ -16,7 +16,7 @@
   - BARseq3 cell classification.
 
 - `BARseq3_Barcoded_cell_Gad1_Vglut1.xlsx`
-  - Amplicons of Vglut1and Gad1 in BARseq3 bardcoded cell.
+  - Amplicons of Vglut1and Gad1 in BARseq3 bardcoded Vglut1 and Gad1 cells.
  
 
 
