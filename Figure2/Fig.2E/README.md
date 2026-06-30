@@ -1,1 +1,4 @@
-Code for Supplementary Figure 3 is found in "Specificity_experiments" Folder
+
+
+- 'cell-type classification.ipynb'
+  - Contains the code for cell-type classification.
