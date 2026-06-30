@@ -8,8 +8,7 @@ Huihui Qi*, Manjari M-G Anant*, Dylan Z. Faltine-Gonzalez*, Ruitao Hu, Lai Wei, 
 - gene_only_raw_image_pipeline: Pipeline to go from raw nd2 images to AnnData object & gene x cell x spatial matrices for transcriptomics only experiments (Figure 3).
 
 ### Figure2:
-- ?
-- ?
+- BARseq2 and BARseq3 Amplicons/Cell analysis in Barcoded cells
 - Specificity experiments: Pcp2 specificity experiment analysis
   
 ### Figure3:
@@ -17,7 +16,7 @@ Huihui Qi*, Manjari M-G Anant*, Dylan Z. Faltine-Gonzalez*, Ruitao Hu, Lai Wei, 
 - raw_data_figures.ipynb: Generating analyses of raw data for Figure 3.
 
 ### Supplemental Figures:
-- SupplFig1: ?
+- SupplFig1: BARseq2 and BARseq3 Amplicons/Cell analysis in non-barcoded cells and Vglut1 and Gad1 amplicons distribution analysis
 - SupplFig3: Malat1 specificity experiment analysis
 
 
