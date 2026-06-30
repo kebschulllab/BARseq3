@@ -1,11 +1,5 @@
-# Datapoint CSV Code Only
 
-This folder now contains only the code needed for:
-
-- Malat1 per-cell ratio datapoints
-
-
-## Malat1
+## Malat1 analysis
 
 - `images_pooled_barseq_analysis.py`
   - Builds the pooled Malat1 per-cell and per-image tables from the raw images.
